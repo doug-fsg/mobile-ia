@@ -23,8 +23,6 @@ This is a **fork** of [jon-makinen/cursor-local-remote](https://github.com/jon-m
 
 ### From your GitHub fork (recommended)
 
-After you push this repo to GitHub:
-
 ```bash
 npm install -g github:doug-fsg/mobile-ia
 ```
@@ -45,6 +43,29 @@ A QR code pops up in your terminal — scan it from your phone and you're connec
 
 > Repo: [doug-fsg/mobile-ia](https://github.com/doug-fsg/mobile-ia)  
 > First install builds Next.js once (may take a minute).
+
+#### Windows: `TAR_ENTRY_ERROR` / install quebrada
+
+No Windows o `npm` às vezes falha ao extrair pacotes grandes (`next`, `highlight.js`). Se aparecerem centenas de `npm warn tar TAR_ENTRY_ERROR ENOENT`, a instalação ficou incompleta.
+
+Corrija assim (PowerShell):
+
+```powershell
+npm uninstall -g cursor-local-remote
+npm cache clean --force
+Remove-Item -Recurse -Force "$env:APPDATA\nvm\*\node_modules\cursor-local-remote" -ErrorAction SilentlyContinue
+
+# Opção A — mais estável no Windows (deste clone):
+cd caminho\para\mobile-ia
+npm install
+npm run build
+npm install -g . --maxsockets=1
+
+# Opção B — direto do GitHub, serializando downloads:
+npm install -g github:doug-fsg/mobile-ia --maxsockets=1
+```
+
+Use Node **20.19+** ou **22** (evite NVM só com 20.18 se puder). Confirme com `clr --version`.
 
 ### From this folder (local test, same `clr` command)
 
