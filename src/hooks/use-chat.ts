@@ -12,6 +12,7 @@ import { useMessageQueue } from "./use-message-queue";
 interface UseChatReturn {
   messages: ChatMessage[];
   toolCalls: ReturnType<typeof useSessionWatch>["toolCalls"];
+  thoughts: ReturnType<typeof useSessionWatch>["thoughts"];
   sessionId: string | null;
   isStreaming: boolean;
   isLoadingHistory: boolean;
@@ -19,6 +20,7 @@ interface UseChatReturn {
   model: string | null;
   selectedModel: string;
   selectedMode: AgentMode;
+  worktree: boolean;
   error: string | null;
   queuedMessages: ReturnType<typeof useMessageQueue>["queuedMessages"];
   sendMessage: (prompt: string, overrides?: { model?: string; mode?: AgentMode }) => Promise<void>;
@@ -26,6 +28,7 @@ interface UseChatReturn {
   setSessionId: (id: string | null) => void;
   setSelectedModel: (model: string) => void;
   setSelectedMode: (mode: AgentMode) => void;
+  setWorktree: (enabled: boolean) => void;
   clearChat: () => void;
   stopStreaming: () => void;
   retryLastMessage: () => void;
@@ -54,17 +57,20 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
   const [model, setModel] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>(initialModel);
   const [selectedMode, setSelectedMode] = useState<AgentMode>("agent");
+  const [worktree, setWorktree] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sessionIdRef = useRef<string | null>(null);
   const workspaceRef = useRef<string | undefined>(initialWorkspace);
   const isStreamingRef = useRef(false);
+  const worktreeRef = useRef(false);
   const sendMessageRef = useRef<
     ((prompt: string, overrides?: { model?: string; mode?: AgentMode }) => Promise<void>) | undefined
   >(undefined);
 
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
   useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  useEffect(() => { worktreeRef.current = worktree; }, [worktree]);
   useEffect(() => { if (!sessionId) workspaceRef.current = initialWorkspace; }, [initialWorkspace, sessionId]);
 
   const handleStreamEnd = useCallback(() => {
@@ -180,6 +186,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
             model: effectiveModel !== "auto" ? effectiveModel : undefined,
             mode: effectiveMode !== "agent" ? effectiveMode : undefined,
             workspace: workspaceRef.current,
+            worktree: !sessionIdRef.current && worktreeRef.current ? true : undefined,
           }),
         });
 
@@ -270,6 +277,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
   return {
     messages: watch.messages,
     toolCalls: watch.toolCalls,
+    thoughts: watch.thoughts,
     sessionId,
     isStreaming,
     isLoadingHistory,
@@ -277,6 +285,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
     model,
     selectedModel,
     selectedMode,
+    worktree,
     error,
     queuedMessages: queueHook.queuedMessages,
     sendMessage,
@@ -284,6 +293,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
     setSessionId,
     setSelectedModel,
     setSelectedMode,
+    setWorktree,
     clearChat,
     stopStreaming,
     retryLastMessage,

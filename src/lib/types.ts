@@ -27,6 +27,13 @@ export interface ToolCallInfo {
   timestamp: number;
 }
 
+export interface ThoughtInfo {
+  id: string;
+  content: string;
+  status: "streaming" | "completed";
+  timestamp: number;
+}
+
 export interface StoredSession {
   id: string;
   title: string;
@@ -44,6 +51,8 @@ export interface ChatRequest {
   model?: string;
   mode?: AgentMode;
   workspace?: string;
+  /** Start new sessions in an isolated git worktree (ignored when resuming). */
+  worktree?: boolean;
 }
 
 export interface NetworkInfo {

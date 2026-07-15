@@ -43,6 +43,7 @@ export function ChatContainer({
   const {
     messages,
     toolCalls,
+    thoughts,
     sessionId,
     isStreaming,
     isLoadingHistory,
@@ -50,11 +51,13 @@ export function ChatContainer({
     model,
     selectedModel,
     selectedMode,
+    worktree,
     error,
     sendMessage,
     loadSession,
     setSelectedModel,
     setSelectedMode,
+    setWorktree,
     stopStreaming,
     retryLastMessage,
     queuedMessages,
@@ -360,6 +363,7 @@ export function ChatContainer({
       <MessageList
         messages={messages}
         toolCalls={toolCalls}
+        thoughts={thoughts}
         isStreaming={isStreaming}
         isLoadingHistory={isLoadingHistory}
         isWatching={isWatching}
@@ -378,8 +382,11 @@ export function ChatContainer({
         isStreaming={isStreaming}
         selectedModel={selectedModel}
         selectedMode={selectedMode}
+        worktree={worktree}
         onModelChange={setSelectedModel}
         onModeChange={setSelectedMode}
+        onWorktreeChange={setWorktree}
+        worktreeLocked={!!sessionId}
         workspace={workspace}
       />
 

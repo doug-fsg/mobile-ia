@@ -202,7 +202,7 @@ if (args.includes("--help") || args.includes("-h")) {
 
   Options:
     -p, --port     Port to run on (default: 3100)
-    -t, --token    Set auth token (otherwise random or AUTH_TOKEN env)
+    -t, --token    Auth token (default: 123, or AUTH_TOKEN env)
     --host         Bind to specific host/IP (default: 0.0.0.0)
     --no-open      Don't auto-open the browser
     --no-qr        Don't show QR code in terminal
@@ -321,7 +321,7 @@ const isLocalOnly = hostname === "127.0.0.1" || hostname === "localhost";
 const localUrl = `http://localhost:${port}`;
 const networkUrl = !isLocalOnly && lanIp ? `http://${lanIp}:${port}` : null;
 
-const authToken = customToken || process.env.AUTH_TOKEN || generateToken();
+const authToken = customToken || process.env.AUTH_TOKEN || "123";
 
 const authUrl = `${localUrl}?token=${authToken}`;
 

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatMessage, ToolCallInfo } from "@/lib/types";
+import type { ChatMessage, ToolCallInfo, ThoughtInfo } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
 import { vlog } from "@/lib/verbose";
 
 export interface SessionWatchState {
   messages: ChatMessage[];
   toolCalls: ToolCallInfo[];
+  thoughts: ThoughtInfo[];
   isWatching: boolean;
   isActive: boolean;
   lastModified: number;
@@ -21,6 +22,7 @@ interface UseSessionWatchOptions {
 export function useSessionWatch(options: UseSessionWatchOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallInfo[]>([]);
+  const [thoughts, setThoughts] = useState<ThoughtInfo[]>([]);
   const [isWatching, setIsWatching] = useState(false);
   const [isActive, setIsActive] = useState(false);
 
@@ -55,6 +57,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
       );
       vlog("watch-client", "mergeMessages", { incoming: incoming.length, prev: prev.length, optimistic: optimistic.length });
       if (optimistic.length === 0) return incoming;
+      // Keep unconfirmed optimistic user messages after server history (they are the latest).
       return [...incoming, ...optimistic];
     });
   }, []);
@@ -62,8 +65,15 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
   const applyUpdate = useCallback((data: Record<string, unknown>) => {
     if (data.modifiedAt && (data.modifiedAt as number) > lastModifiedRef.current) {
       lastModifiedRef.current = data.modifiedAt as number;
-      if ((data.messages as ChatMessage[])?.length > 0) mergeMessages(data.messages as ChatMessage[]);
-      if ((data.toolCalls as ToolCallInfo[])?.length > 0) setToolCalls(data.toolCalls as ToolCallInfo[]);
+      if (Array.isArray(data.messages)) {
+        if ((data.messages as ChatMessage[]).length > 0) {
+          mergeMessages(data.messages as ChatMessage[]);
+        }
+      }
+      if (Array.isArray(data.toolCalls)) setToolCalls(data.toolCalls as ToolCallInfo[]);
+      if (Array.isArray(data.thoughts)) setThoughts(data.thoughts as ThoughtInfo[]);
+    } else if (Array.isArray(data.thoughts)) {
+      setThoughts(data.thoughts as ThoughtInfo[]);
     }
   }, [mergeMessages]);
 
@@ -97,6 +107,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
           if (data.modifiedAt) lastModifiedRef.current = data.modifiedAt;
           if (data.messages?.length > 0) mergeMessages(data.messages);
           if (data.toolCalls?.length > 0) setToolCalls(data.toolCalls);
+          if (Array.isArray(data.thoughts)) setThoughts(data.thoughts);
         } catch (err) {
           console.error("[watch] Failed to parse connected event");
           vlog("watch-client", "connected parse error", String(err));
@@ -110,6 +121,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
             id, isActive: data.isActive,
             messages: data.messages?.length ?? 0,
             toolCalls: data.toolCalls?.length ?? 0,
+            thoughts: data.thoughts?.length ?? 0,
             modifiedAt: data.modifiedAt,
           });
           applyUpdate(data);
@@ -156,6 +168,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
       });
       if (data.messages?.length > 0) mergeMessages(data.messages);
       if (data.toolCalls?.length > 0) setToolCalls(data.toolCalls);
+      if (Array.isArray(data.thoughts)) setThoughts(data.thoughts);
       if (data.modifiedAt) lastModifiedRef.current = data.modifiedAt;
     } catch (err) {
       console.error("[watch] Failed to refresh from history");
@@ -167,6 +180,7 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
     vlog("watch-client", "resetState");
     setMessages([]);
     setToolCalls([]);
+    setThoughts([]);
     setIsActive(false);
     lastModifiedRef.current = 0;
   }, []);
@@ -180,6 +194,8 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
     setMessages,
     toolCalls,
     setToolCalls,
+    thoughts,
+    setThoughts,
     isWatching,
     isActive,
     setIsActive,

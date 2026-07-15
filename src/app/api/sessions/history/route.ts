@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const { messages, toolCalls, modifiedAt } = await readSessionMessages(workspace, sessionId);
-  vlog("history", "loaded", { sessionId, messages: messages.length, toolCalls: toolCalls.length, modifiedAt, ms: Date.now() - t0 });
-  return Response.json({ messages, toolCalls, sessionId, modifiedAt });
+  const { messages, toolCalls, thoughts, modifiedAt } = await readSessionMessages(workspace, sessionId);
+  vlog("history", "loaded", { sessionId, messages: messages.length, toolCalls: toolCalls.length, thoughts: thoughts.length, modifiedAt, ms: Date.now() - t0 });
+  return Response.json({ messages, toolCalls, thoughts, sessionId, modifiedAt });
 }

@@ -49,7 +49,13 @@ function waitForSessionId(
             resolve(event.session_id);
           }
 
-          if (resolvedSessionId && (event.type === "user" || event.type === "assistant")) {
+          if (
+            resolvedSessionId &&
+            (event.type === "user" ||
+              event.type === "assistant" ||
+              event.type === "thinking" ||
+              event.type === "tool_call")
+          ) {
             pushLiveEvent(resolvedSessionId, event);
           }
         } catch {
@@ -93,6 +99,7 @@ export async function POST(req: Request) {
       workspace,
       model: body.model,
       mode: body.mode,
+      worktree: body.worktree,
     });
 
     registerProcess(requestId, child, workspace);
@@ -109,7 +116,9 @@ export async function POST(req: Request) {
     });
 
     if (verbose) {
-      console.warn(`[chat] spawning agent in ${workspace} (model=${body.model ?? "default"}, mode=${body.mode ?? "agent"})`);
+      console.warn(
+        `[chat] spawning agent in ${workspace} (model=${body.model ?? "default"}, mode=${body.mode ?? "agent"}, worktree=${body.worktree && !body.sessionId ? "yes" : "no"})`,
+      );
     }
 
     const sessionId = await waitForSessionId(child, workspace, body.prompt, requestId);

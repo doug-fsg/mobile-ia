@@ -14,6 +14,7 @@ export const chatRequestSchema = z.object({
     .optional(),
   mode: z.enum(["agent", "ask", "plan"]).optional(),
   workspace: z.string().max(512).optional(),
+  worktree: z.boolean().optional(),
 });
 
 export const deleteSessionSchema = z.object({

@@ -98,6 +98,8 @@ export interface AgentOptions {
   workspace?: string;
   model?: string;
   mode?: AgentMode;
+  /** Create/use an isolated git worktree (only for new sessions). */
+  worktree?: boolean;
 }
 
 async function shouldTrust(): Promise<boolean> {
@@ -132,6 +134,10 @@ export async function spawnAgent(options: AgentOptions): Promise<ChildProcess> {
   }
   if (options.mode && options.mode !== "agent") {
     args.push("--mode", options.mode);
+  }
+  // Worktrees only apply to new chats — resume continues the existing checkout.
+  if (options.worktree && !options.sessionId) {
+    args.push("--worktree");
   }
 
   // Never use shell:true — it re-parses args and breaks paths with spaces.

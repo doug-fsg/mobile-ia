@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import type { AgentMode, ModelInfo } from "@/lib/types";
 import { useHaptics } from "@/hooks/use-haptics";
 import { apiFetch } from "@/lib/api-fetch";
-import { ChevronDown, Spinner, StopIcon, PlusIcon, ArrowUp, CloseIcon } from "./icons";
+import { ChevronDown, Spinner, StopIcon, PlusIcon, ArrowUp, CloseIcon, GitBranchIcon } from "./icons";
 import { AutocompleteMenu, type AutocompleteItem } from "./autocomplete-menu";
 
 const MODES: { id: AgentMode; label: string }[] = [
@@ -29,8 +29,12 @@ interface ChatInputProps {
   isStreaming?: boolean;
   selectedModel: string;
   selectedMode: AgentMode;
+  worktree?: boolean;
   onModelChange: (model: string) => void;
   onModeChange: (mode: AgentMode) => void;
+  onWorktreeChange?: (enabled: boolean) => void;
+  /** Disable worktree toggle when session already started (resume can't switch). */
+  worktreeLocked?: boolean;
   workspace?: string | null;
 }
 
@@ -52,8 +56,11 @@ export function ChatInput({
   isStreaming,
   selectedModel,
   selectedMode,
+  worktree = false,
   onModelChange,
   onModeChange,
+  onWorktreeChange,
+  worktreeLocked = false,
   workspace,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
@@ -444,6 +451,36 @@ export function ChatInput({
                   {mode.label}
                 </button>
               ))}
+
+              {onWorktreeChange && (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={worktree}
+                  aria-label="Worktree mode"
+                  title={
+                    worktreeLocked
+                      ? "Worktree applies only to new sessions"
+                      : worktree
+                        ? "New sessions run in an isolated git worktree"
+                        : "Enable isolated git worktree for new sessions"
+                  }
+                  disabled={worktreeLocked}
+                  onClick={() => {
+                    if (worktreeLocked) return;
+                    haptics.select();
+                    onWorktreeChange(!worktree);
+                  }}
+                  className={`ml-1 flex items-center gap-1 px-2.5 py-1.5 rounded text-[12px] font-medium transition-colors ${
+                    worktree
+                      ? "bg-bg-active text-text"
+                      : "text-text-muted hover:text-text-secondary hover:bg-bg-hover"
+                  } ${worktreeLocked ? "opacity-40 cursor-not-allowed" : ""}`}
+                >
+                  <GitBranchIcon size={12} />
+                  <span className="hidden sm:inline">Worktree</span>
+                </button>
+              )}
 
               <span className="hidden sm:inline text-[10px] text-text-muted/50 ml-2 select-none">
                 / skills · @ files · Enter send

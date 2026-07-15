@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ChatMessage, ToolCallInfo, StoredSession, QueuedMessage } from "@/lib/types";
+import type { ChatMessage, ToolCallInfo, ThoughtInfo, StoredSession, QueuedMessage } from "@/lib/types";
 import { useHaptics } from "@/hooks/use-haptics";
 import { timeAgo } from "@/lib/format";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard, ToolCallGroup, TodoLogCard, ChangesSummary, isMinorToolCall } from "./tool-call-card";
+import { ThoughtCard } from "./thought-card";
 import { Spinner, RetryIcon, ClockIcon, ArrowDown } from "./icons";
 
 interface MessageListProps {
   messages: ChatMessage[];
   toolCalls: ToolCallInfo[];
+  thoughts?: ThoughtInfo[];
   isStreaming: boolean;
   isLoadingHistory?: boolean;
   isWatching?: boolean;
@@ -24,11 +26,12 @@ interface MessageListProps {
 }
 
 interface TimelineItem {
-  kind: "message" | "toolcall" | "toolgroup";
+  kind: "message" | "toolcall" | "toolgroup" | "thought";
   timestamp: number;
   message?: ChatMessage;
   toolCall?: ToolCallInfo;
   toolCalls?: ToolCallInfo[];
+  thought?: ThoughtInfo;
 }
 
 function RecentSessions({
@@ -171,6 +174,7 @@ function QueuedMessageCard({
 export function MessageList({
   messages,
   toolCalls,
+  thoughts = [],
   isStreaming,
   isLoadingHistory,
   isWatching,
@@ -225,7 +229,7 @@ export function MessageList({
         endRef.current?.scrollIntoView({ behavior: "smooth" });
       }
     }, 200);
-  }, [messages, toolCalls, autoScroll, userJustSent]);
+  }, [messages, toolCalls, thoughts, autoScroll, userJustSent]);
 
   const sorted: TimelineItem[] = [
     ...messages.map((m): TimelineItem => ({ kind: "message", timestamp: m.timestamp, message: m })),
@@ -234,6 +238,13 @@ export function MessageList({
         kind: "toolcall",
         timestamp: tc.timestamp,
         toolCall: tc,
+      }),
+    ),
+    ...thoughts.map(
+      (th): TimelineItem => ({
+        kind: "thought",
+        timestamp: th.timestamp,
+        thought: th,
       }),
     ),
   ].sort((a, b) => a.timestamp - b.timestamp);
@@ -334,6 +345,9 @@ export function MessageList({
               }
               if (item.kind === "toolgroup" && item.toolCalls) {
                 return <ToolCallGroup key={`group-${i}`} toolCalls={item.toolCalls} />;
+              }
+              if (item.kind === "thought" && item.thought) {
+                return <ThoughtCard key={item.thought.id} thought={item.thought} />;
               }
               return null;
             })}

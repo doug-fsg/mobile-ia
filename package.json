@@ -1,6 +1,6 @@
 {
   "name": "cursor-local-remote",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "type": "module",
   "description": "Control Cursor IDE from any device on your local network (Windows-friendly fork)",
   "license": "MIT",
@@ -42,6 +42,7 @@
     "start": "node bin/dev.mjs --start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "test": "npx --yes tsx --test src/lib/parse-timeline.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "node scripts/prepare-for-pack.mjs",
