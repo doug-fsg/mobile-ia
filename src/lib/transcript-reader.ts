@@ -1,7 +1,8 @@
 import { readdir, stat, readFile, access } from "fs/promises";
+import { createReadStream, existsSync, statSync } from "fs";
+import { createInterface } from "readline";
 import { join, resolve, sep, relative, isAbsolute } from "path";
 import { homedir } from "os";
-import { existsSync, statSync } from "fs";
 import type { StoredSession, ChatMessage, ToolCallInfo, ThoughtInfo, ProjectInfo } from "@/lib/types";
 import { parseJsonlEntriesToTimeline, parseLiveEventsToTimeline } from "@/lib/parse-timeline";
 import { cleanSessionTitle } from "@/lib/format";
@@ -153,15 +154,43 @@ async function parseJsonlEntries(jsonlPath: string): Promise<Record<string, unkn
 }
 
 async function extractFirstUserMessage(jsonlPath: string): Promise<string> {
-  for (const entry of await parseJsonlEntries(jsonlPath)) {
-    if (entry.role === "user") {
-      const msg = entry.message as Record<string, unknown> | undefined;
-      const content = msg?.content as Array<Record<string, unknown>> | undefined;
-      const text: string = (content?.[0]?.text as string) || "";
-      return cleanSessionTitle(text.replace(/<[^>]+>/g, ""), 120);
+  // Stream line-by-line so listing dozens of sessions does not load each jsonl fully.
+  const stream = createReadStream(jsonlPath, { encoding: "utf-8", highWaterMark: 64 * 1024 });
+  const rl = createInterface({ input: stream, crlfDelay: Infinity });
+  try {
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line) as Record<string, unknown>;
+        if (entry.role !== "user") continue;
+        const msg = entry.message as Record<string, unknown> | undefined;
+        const content = msg?.content as Array<Record<string, unknown>> | undefined;
+        const text: string = (content?.[0]?.text as string) || "";
+        return cleanSessionTitle(text.replace(/<[^>]+>/g, ""), 120);
+      } catch {
+        continue;
+      }
     }
+  } finally {
+    rl.close();
+    stream.destroy();
   }
   return "";
+}
+
+const previewCache = new Map<string, { mtime: number; preview: string }>();
+
+async function extractFirstUserMessageCached(jsonlPath: string, mtimeMs: number): Promise<string> {
+  const hit = previewCache.get(jsonlPath);
+  if (hit && hit.mtime === mtimeMs) return hit.preview;
+  const preview = await extractFirstUserMessage(jsonlPath);
+  previewCache.set(jsonlPath, { mtime: mtimeMs, preview });
+  // Bound cache size (sessions come and go).
+  if (previewCache.size > 400) {
+    const first = previewCache.keys().next().value;
+    if (first) previewCache.delete(first);
+  }
+  return preview;
 }
 
 async function pathExists(p: string): Promise<boolean> {
@@ -206,7 +235,7 @@ export async function readCursorSessions(workspace: string): Promise<StoredSessi
 
       const s = await stat(jsonl);
       const sessionId = entry.replace(".jsonl", "");
-      const preview = await extractFirstUserMessage(jsonl);
+      const preview = await extractFirstUserMessageCached(jsonl, s.mtimeMs);
 
       if (!preview) continue;
 
@@ -275,6 +304,45 @@ export async function getSessionModifiedAt(workspace: string, sessionId: string)
   }
 }
 
+export async function readSessionMessagesFromPath(
+  jsonlPath: string,
+  sessionId: string,
+): Promise<SessionHistoryResult> {
+  const t0 = Date.now();
+  let modifiedAt = 0;
+  try {
+    modifiedAt = (await stat(jsonlPath)).mtimeMs;
+  } catch (err) {
+    vlog("reader", "readSessionMessagesFromPath: stat failed", { jsonlPath, error: String(err) });
+    return { messages: [], toolCalls: [], thoughts: [], modifiedAt: 0 };
+  }
+
+  const entries = await parseJsonlEntries(jsonlPath);
+  vlog("reader", "readSessionMessagesFromPath: parsed jsonl", {
+    sessionId,
+    entries: entries.length,
+    jsonlPath,
+    bytesHint: entries.length,
+  });
+
+  const { messages, toolCalls, thoughts } = parseJsonlEntriesToTimeline(
+    entries,
+    sessionId,
+    modifiedAt - 60_000,
+  );
+
+  vlog("reader", "readSessionMessagesFromPath: done", {
+    sessionId,
+    messages: messages.length,
+    toolCalls: toolCalls.length,
+    thoughts: thoughts.length,
+    modifiedAt,
+    ms: Date.now() - t0,
+  });
+
+  return { messages, toolCalls, thoughts, modifiedAt };
+}
+
 export function parseLiveEvents(
   events: Record<string, unknown>[],
   sessionId: string,
@@ -283,34 +351,10 @@ export function parseLiveEvents(
 }
 
 export async function readSessionMessages(workspace: string, sessionId: string): Promise<SessionHistoryResult> {
-  const t0 = Date.now();
   const jsonlPath = await resolveJsonlPath(workspace, sessionId);
   if (!jsonlPath) {
     vlog("reader", "readSessionMessages: no jsonl path", { workspace, sessionId });
     return { messages: [], toolCalls: [], thoughts: [], modifiedAt: 0 };
   }
-
-  let modifiedAt = 0;
-  try {
-    modifiedAt = (await stat(jsonlPath)).mtimeMs;
-  } catch (err) {
-    vlog("reader", "readSessionMessages: stat failed", { jsonlPath, error: String(err) });
-    return { messages: [], toolCalls: [], thoughts: [], modifiedAt: 0 };
-  }
-
-  const entries = await parseJsonlEntries(jsonlPath);
-  vlog("reader", "readSessionMessages: parsed jsonl", { sessionId, entries: entries.length, jsonlPath });
-
-  const { messages, toolCalls, thoughts } = parseJsonlEntriesToTimeline(
-    entries,
-    sessionId,
-    modifiedAt - 60_000,
-  );
-
-  vlog("reader", "readSessionMessages: done", {
-    sessionId, messages: messages.length, toolCalls: toolCalls.length, thoughts: thoughts.length,
-    modifiedAt, ms: Date.now() - t0,
-  });
-
-  return { messages, toolCalls, thoughts, modifiedAt };
+  return readSessionMessagesFromPath(jsonlPath, sessionId);
 }

@@ -231,6 +231,7 @@ export function ChatWorkspace() {
               initialSessionId={inst.initialSessionId}
               initialWorkspace={inst.initialWorkspace}
               defaultModel={defaultModel}
+              tabActive={inst.id === activeId}
               onLabelChange={(label) => updateLabel(inst.id, label)}
               onStreamingChange={(s) => updateStreaming(inst.id, s)}
               onSessionIdChange={(sid) => updateSessionId(inst.id, sid)}

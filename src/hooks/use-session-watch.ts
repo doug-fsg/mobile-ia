@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { ChatMessage, ToolCallInfo, ThoughtInfo } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
+import { SSE_RECONNECT_BASE_MS, SSE_RECONNECT_MAX_MS } from "@/lib/constants";
 import { vlog } from "@/lib/verbose";
 
 export interface SessionWatchState {
@@ -30,18 +31,47 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
   const lastModifiedRef = useRef<number>(0);
   const onStreamEndRef = useRef(options.onStreamEnd);
   const onStreamStartRef = useRef(options.onStreamStart);
+  const intentionalCloseRef = useRef(false);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchTargetRef = useRef<{ id: string; workspace?: string } | null>(null);
+  const connectRef = useRef<(id: string, workspace?: string, resetModified?: boolean) => void>(() => {});
+  const refreshRef = useRef<(sessionId: string, workspace?: string) => Promise<void>>(async () => {});
 
   useEffect(() => { onStreamEndRef.current = options.onStreamEnd; }, [options.onStreamEnd]);
   useEffect(() => { onStreamStartRef.current = options.onStreamStart; }, [options.onStreamStart]);
 
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+  }, []);
+
   const stopWatching = useCallback(() => {
+    intentionalCloseRef.current = true;
+    clearReconnectTimer();
+    reconnectAttemptRef.current = 0;
+    watchTargetRef.current = null;
     if (eventSourceRef.current) {
       vlog("watch-client", "stopWatching: closing EventSource");
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
     setIsWatching(false);
-  }, []);
+  }, [clearReconnectTimer]);
+
+  /** Close the socket but keep the watch target so we can resume. */
+  const pauseWatching = useCallback(() => {
+    intentionalCloseRef.current = true;
+    clearReconnectTimer();
+    if (eventSourceRef.current) {
+      vlog("watch-client", "pauseWatching: closing EventSource (keep target)");
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    setIsWatching(false);
+  }, [clearReconnectTimer]);
 
   const mergeMessages = useCallback((incoming: ChatMessage[]) => {
     setMessages((prev) => {
@@ -55,17 +85,18 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
           !incomingIds.has(m.id) &&
           !incomingUserTexts.has(m.content.trim()),
       );
-      vlog("watch-client", "mergeMessages", { incoming: incoming.length, prev: prev.length, optimistic: optimistic.length });
+      vlog("watch-client", "mergeMessages", {
+        incoming: incoming.length,
+        prev: prev.length,
+        optimistic: optimistic.length,
+      });
       if (optimistic.length === 0) return incoming;
-      // Keep unconfirmed optimistic user messages after server history (they are the latest).
       return [...incoming, ...optimistic];
     });
   }, []);
 
   const applyUpdate = useCallback((data: Record<string, unknown>) => {
     const incomingModified = typeof data.modifiedAt === "number" ? (data.modifiedAt as number) : 0;
-    // Accept equal timestamps (live Date.now vs file mtime races) and bump a client seq
-    // so history after a live stream is never dropped solely due to clock skew.
     const shouldApply =
       !incomingModified ||
       incomingModified >= lastModifiedRef.current ||
@@ -88,23 +119,51 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
     if (Array.isArray(data.thoughts)) setThoughts(data.thoughts as ThoughtInfo[]);
   }, [mergeMessages]);
 
-  const startWatching = useCallback(
-    (id: string, workspace?: string) => {
-      stopWatching();
-      lastModifiedRef.current = 0;
+  const scheduleReconnect = useCallback((id: string, workspace?: string) => {
+    clearReconnectTimer();
+    const attempt = reconnectAttemptRef.current;
+    const delay = Math.min(
+      SSE_RECONNECT_BASE_MS * Math.pow(2, attempt),
+      SSE_RECONNECT_MAX_MS,
+    );
+    reconnectAttemptRef.current = attempt + 1;
+    vlog("watch-client", "scheduleReconnect", { id, attempt, delay });
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      const target = watchTargetRef.current;
+      if (!target || target.id !== id || intentionalCloseRef.current) return;
+      connectRef.current(id, workspace, false);
+    }, delay);
+  }, [clearReconnectTimer]);
+
+  const connect = useCallback(
+    (id: string, workspace?: string, resetModified = true) => {
+      intentionalCloseRef.current = false;
+      watchTargetRef.current = { id, workspace };
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (resetModified) lastModifiedRef.current = 0;
 
       let url = `/api/sessions/watch?id=${encodeURIComponent(id)}`;
       if (workspace) url += `&workspace=${encodeURIComponent(workspace)}`;
-      vlog("watch-client", "startWatching: opening EventSource", { id, url });
+      vlog("watch-client", "connect: opening EventSource", {
+        id,
+        url,
+        attempt: reconnectAttemptRef.current,
+      });
       const es = new EventSource(url);
       eventSourceRef.current = es;
 
       es.addEventListener("connected", (e) => {
+        reconnectAttemptRef.current = 0;
         setIsWatching(true);
         try {
           const data = JSON.parse(e.data);
           vlog("watch-client", "connected event", {
-            id, isActive: data.isActive,
+            id,
+            isActive: data.isActive,
             messages: data.messages?.length ?? 0,
             toolCalls: data.toolCalls?.length ?? 0,
             modifiedAt: data.modifiedAt,
@@ -130,7 +189,8 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
         try {
           const data = JSON.parse(e.data);
           vlog("watch-client", "update event", {
-            id, isActive: data.isActive,
+            id,
+            isActive: data.isActive,
             messages: data.messages?.length ?? 0,
             toolCalls: data.toolCalls?.length ?? 0,
             thoughts: data.thoughts?.length ?? 0,
@@ -151,16 +211,34 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
       });
 
       es.addEventListener("error", (e) => {
-        vlog("watch-client", "EventSource error", { id, readyState: es.readyState, event: String(e) });
+        vlog("watch-client", "EventSource error", {
+          id,
+          readyState: es.readyState,
+          event: String(e),
+        });
+        if (intentionalCloseRef.current) return;
         if (es.readyState === EventSource.CLOSED) {
-          setIsActive(false);
           setIsWatching(false);
           if (eventSourceRef.current === es) eventSourceRef.current = null;
-          onStreamEndRef.current?.();
+          // Network blip ≠ agent finished — reconnect instead of ending the stream.
+          scheduleReconnect(id, workspace);
         }
       });
     },
-    [stopWatching, applyUpdate, mergeMessages],
+    [applyUpdate, mergeMessages, scheduleReconnect],
+  );
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
+  const startWatching = useCallback(
+    (id: string, workspace?: string) => {
+      clearReconnectTimer();
+      reconnectAttemptRef.current = 0;
+      connect(id, workspace, true);
+    },
+    [clearReconnectTimer, connect],
   );
 
   const refreshFromHistory = useCallback(async (sessionId: string, workspace?: string) => {
@@ -170,7 +248,11 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
       if (workspace) url += `&workspace=${encodeURIComponent(workspace)}`;
       vlog("watch-client", "refreshFromHistory: fetch", { sessionId, url });
       const res = await apiFetch(url);
-      vlog("watch-client", "refreshFromHistory: response", { sessionId, status: res.status, ok: res.ok });
+      vlog("watch-client", "refreshFromHistory: response", {
+        sessionId,
+        status: res.status,
+        ok: res.ok,
+      });
       if (!res.ok) return;
       const data = await res.json();
       vlog("watch-client", "refreshFromHistory: data", {
@@ -186,9 +268,25 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
       if (data.modifiedAt) lastModifiedRef.current = data.modifiedAt;
     } catch (err) {
       console.error("[watch] Failed to refresh from history");
-      vlog("watch-client", "refreshFromHistory: error", { sessionId, error: String(err), ms: Date.now() - t0 });
+      vlog("watch-client", "refreshFromHistory: error", {
+        sessionId,
+        error: String(err),
+        ms: Date.now() - t0,
+      });
     }
   }, [mergeMessages]);
+
+  useEffect(() => {
+    refreshRef.current = refreshFromHistory;
+  }, [refreshFromHistory]);
+
+  const resumeWatching = useCallback(() => {
+    const target = watchTargetRef.current;
+    if (!target) return;
+    vlog("watch-client", "resumeWatching", { id: target.id });
+    void refreshRef.current(target.id, target.workspace);
+    connectRef.current(target.id, target.workspace, false);
+  }, []);
 
   const resetState = useCallback(() => {
     vlog("watch-client", "resetState");
@@ -200,8 +298,26 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
   }, []);
 
   useEffect(() => {
-    return () => { stopWatching(); };
+    return () => {
+      stopWatching();
+    };
   }, [stopWatching]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      const target = watchTargetRef.current;
+      if (!target) return;
+      if (document.hidden) {
+        pauseWatching();
+        vlog("watch-client", "paused — browser tab hidden", { id: target.id });
+      } else {
+        vlog("watch-client", "resume — browser tab visible", { id: target.id });
+        resumeWatching();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [pauseWatching, resumeWatching]);
 
   return {
     messages,
@@ -215,6 +331,8 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
     setIsActive,
     startWatching,
     stopWatching,
+    pauseWatching,
+    resumeWatching,
     refreshFromHistory,
     resetState,
     lastModifiedRef,

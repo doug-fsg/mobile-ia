@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { ChatMessage, AgentMode } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
 import { uuid } from "@/lib/uuid";
-import { STREAMING_HEALTH_CHECK_MS } from "@/lib/constants";
+import { CHAT_FETCH_TIMEOUT_MS, STREAMING_HEALTH_CHECK_MS } from "@/lib/constants";
 import { vlog } from "@/lib/verbose";
 import { parseUserMessageContent } from "@/lib/message-display";
 import { useSessionWatch } from "./use-session-watch";
@@ -54,7 +54,11 @@ async function fetchActiveSessions(): Promise<string[]> {
 
 export { fetchActiveSessions };
 
-export function useChat(initialModel = "auto", initialWorkspace?: string): UseChatReturn {
+export function useChat(
+  initialModel = "auto",
+  initialWorkspace?: string,
+  options?: { tabActive?: boolean },
+): UseChatReturn {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -105,6 +109,35 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
 
   const queueHook = useMessageQueue({ selectedModel, selectedMode });
 
+  const tabActive = options?.tabActive !== false;
+  const tabActiveRef = useRef(tabActive);
+  useEffect(() => {
+    const wasActive = tabActiveRef.current;
+    tabActiveRef.current = tabActive;
+    if (wasActive === tabActive) return;
+    if (!tabActive) {
+      watch.pauseWatching();
+      return;
+    }
+    if (sessionIdRef.current) {
+      const sid = sessionIdRef.current;
+      const ws = workspaceRef.current;
+      void watch.refreshFromHistory(sid, ws).then(() => {
+        if (tabActiveRef.current && sessionIdRef.current === sid) {
+          watch.startWatching(sid, ws);
+        }
+      });
+    }
+  }, [tabActive, watch]);
+
+  const startWatchingIfActive = useCallback(
+    (id: string, workspace?: string) => {
+      watch.startWatching(id, workspace);
+      if (!tabActiveRef.current) watch.pauseWatching();
+    },
+    [watch],
+  );
+
   const clearChat = useCallback(() => {
     watch.stopWatching();
     watch.resetState();
@@ -145,7 +178,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
         vlog("chat", "loadSession: refreshFromHistory done", { id, ms: Date.now() - t0 });
 
         vlog("chat", "loadSession: startWatching", { id, workspace });
-        watch.startWatching(id, workspace);
+        startWatchingIfActive(id, workspace);
 
         vlog("chat", "loadSession: checking active sessions");
         const active = await fetchActiveSessions();
@@ -163,7 +196,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
         setIsLoadingHistory(false);
       }
     },
-    [watch],
+    [watch, startWatchingIfActive],
   );
 
   const sendMessage = useCallback(
@@ -194,6 +227,9 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
         const res = await apiFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Must exceed AGENT_INIT_TIMEOUT; never retry — duplicate POSTs spawn orphan agents.
+          timeoutMs: CHAT_FETCH_TIMEOUT_MS,
+          retries: 0,
           body: JSON.stringify({
             prompt,
             sessionId: sessionIdRef.current ?? undefined,
@@ -217,7 +253,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
         setSessionId(newSessionId);
         if (data.model) setModel(data.model);
 
-        watch.startWatching(newSessionId, workspaceRef.current);
+        startWatchingIfActive(newSessionId, workspaceRef.current);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         const message = err instanceof Error ? err.message : "Unknown error";
@@ -225,7 +261,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
         setIsStreaming(false);
       }
     },
-    [selectedModel, selectedMode, watch, queueHook],
+    [selectedModel, selectedMode, watch, queueHook, startWatchingIfActive],
   );
 
   useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
@@ -233,15 +269,15 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.visibilityState !== "visible") return;
+      if (!tabActiveRef.current) return;
       const sid = sessionIdRef.current;
       if (!sid) return;
 
       try {
-        await watch.refreshFromHistory(sid, workspaceRef.current);
+        // SSE pause/resume is owned by useSessionWatch; here we only sync streaming flag.
         const active = await fetchActiveSessions();
         setIsStreaming(active.includes(sid));
         setError(null);
-        if (!watch.isWatching) watch.startWatching(sid, workspaceRef.current);
       } catch {
         console.error("[chat] Failed to refresh on visibility change");
       }
@@ -249,7 +285,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
 
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [watch]);
+  }, []);
 
   const forceSendQueued = useCallback((id: string) => {
     const msg = queueHook.forceSendQueued(id);

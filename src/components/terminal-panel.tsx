@@ -130,30 +130,60 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
     const entry = getOrCreateXterm(id);
     if (!entry) return;
 
-    const es = new EventSource(`/api/terminal/stream?id=${id}`);
-    eventSourcesRef.current.set(id, es);
+    let attempt = 0;
+    let intentional = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    es.addEventListener("connected", (e) => {
-      const data = JSON.parse(e.data);
-      if (data.output) entry.term.write(data.output);
-      setTabs((prev) =>
-        prev.map((t) => t.id === id ? { ...t, running: data.running, exitCode: data.exitCode } : t),
-      );
-    });
+    const open = () => {
+      const es = new EventSource(`/api/terminal/stream?id=${id}`);
+      eventSourcesRef.current.set(id, es);
 
-    es.addEventListener("output", (e) => {
-      const data = JSON.parse(e.data);
-      if (data.data) entry.term.write(data.data);
-      setTabs((prev) =>
-        prev.map((t) => t.id === id ? { ...t, running: data.running, exitCode: data.exitCode } : t),
-      );
-    });
+      es.addEventListener("connected", (e) => {
+        attempt = 0;
+        const data = JSON.parse(e.data);
+        if (data.output) entry.term.write(data.output);
+        setTabs((prev) =>
+          prev.map((t) => t.id === id ? { ...t, running: data.running, exitCode: data.exitCode } : t),
+        );
+      });
 
-    es.onerror = () => {
-      es.close();
-      eventSourcesRef.current.delete(id);
+      es.addEventListener("output", (e) => {
+        const data = JSON.parse(e.data);
+        if (data.data) entry.term.write(data.data);
+        setTabs((prev) =>
+          prev.map((t) => t.id === id ? { ...t, running: data.running, exitCode: data.exitCode } : t),
+        );
+      });
+
+      es.onerror = () => {
+        if (intentional) return;
+        if (es.readyState !== EventSource.CLOSED) return;
+        es.close();
+        eventSourcesRef.current.delete(id);
+        const delay = Math.min(1000 * Math.pow(2, attempt), 15_000);
+        attempt += 1;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          if (!intentional && !entry.disposed) open();
+        }, delay);
+      };
+
+      // Stash closer so workspace switches can cancel reconnect.
+      (es as EventSource & { __clrClose?: () => void }).__clrClose = () => {
+        intentional = true;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        es.close();
+      };
     };
+
+    open();
   }, [getOrCreateXterm]);
+
+  const closeEventSource = (es: EventSource) => {
+    const closer = (es as EventSource & { __clrClose?: () => void }).__clrClose;
+    if (closer) closer();
+    else es.close();
+  };
 
   const prevWorkspaceRef = useRef(workspace);
 
@@ -162,7 +192,7 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
       prevWorkspaceRef.current = workspace;
       loadedRef.current = false;
 
-      for (const es of eventSourcesRef.current.values()) es.close();
+      for (const es of eventSourcesRef.current.values()) closeEventSource(es);
       eventSourcesRef.current.clear();
       for (const entry of xtermsRef.current.values()) {
         entry.disposed = true;
@@ -202,7 +232,11 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
 
   useEffect(() => {
     return () => {
-      for (const es of eventSourcesRef.current.values()) es.close();
+      for (const es of eventSourcesRef.current.values()) {
+        const closer = (es as EventSource & { __clrClose?: () => void }).__clrClose;
+        if (closer) closer();
+        else es.close();
+      }
       eventSourcesRef.current.clear();
       for (const entry of xtermsRef.current.values()) {
         entry.disposed = true;
@@ -245,7 +279,12 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
 
   const cleanupTerminal = useCallback((id: string) => {
     const es = eventSourcesRef.current.get(id);
-    if (es) { es.close(); eventSourcesRef.current.delete(id); }
+    if (es) {
+      const closer = (es as EventSource & { __clrClose?: () => void }).__clrClose;
+      if (closer) closer();
+      else es.close();
+      eventSourcesRef.current.delete(id);
+    }
     const entry = xtermsRef.current.get(id);
     if (entry) { entry.disposed = true; entry.term.dispose(); xtermsRef.current.delete(id); }
     containerRefsRef.current.delete(id);

@@ -26,6 +26,8 @@ interface ChatContainerProps {
   onOpenSidebar?: () => void;
   onOpenSettings?: () => void;
   onOpenQr?: () => void;
+  /** False when this instance is mounted but hidden (another workspace tab is active). */
+  tabActive?: boolean;
 }
 
 export function ChatContainer({
@@ -39,6 +41,7 @@ export function ChatContainer({
   onOpenSidebar,
   onOpenSettings,
   onOpenQr,
+  tabActive = true,
 }: ChatContainerProps) {
   const {
     messages,
@@ -64,7 +67,7 @@ export function ChatContainer({
     forceSendQueued,
     editQueued,
     deleteQueued,
-  } = useChat(defaultModel, initialWorkspace);
+  } = useChat(defaultModel, initialWorkspace, { tabActive });
 
   const haptics = useHaptics();
   const sound = useSound();

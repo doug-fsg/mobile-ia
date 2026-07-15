@@ -1,8 +1,9 @@
+import { stat } from "fs/promises";
 import { watch, type FSWatcher } from "fs";
 import {
   resolveJsonlPath,
   readSessionMessages,
-  getSessionModifiedAt,
+  readSessionMessagesFromPath,
   parseLiveEvents,
 } from "@/lib/transcript-reader";
 import { getWorkspace } from "@/lib/workspace";
@@ -80,33 +81,79 @@ export async function GET(req: Request) {
     async start(controller) {
       const pushFileUpdate = async () => {
         if (cancelled || !jsonlPath) return;
+        const t0 = Date.now();
         try {
-          const modifiedAt = await getSessionModifiedAt(workspace, sessionId);
+          // Stat the known path — skip resolveJsonlPath on every fs.watch tick.
+          let modifiedAt = 0;
+          try {
+            modifiedAt = (await stat(jsonlPath)).mtimeMs;
+          } catch {
+            return;
+          }
           if (modifiedAt <= lastSentModified) {
             vlog("watch", "skipping update — not modified", { sessionId, modifiedAt, lastSentModified });
             return;
           }
 
-          const { messages, toolCalls, thoughts } = await readSessionMessages(workspace, sessionId);
+          const { messages, toolCalls, thoughts } = await readSessionMessagesFromPath(jsonlPath, sessionId);
           lastSentModified = modifiedAt;
-          vlog("watch", "pushing file update", { sessionId, messages: messages.length, toolCalls: toolCalls.length, thoughts: thoughts.length, modifiedAt });
-          controller.enqueue(sseMessage("update", { messages, toolCalls, thoughts, modifiedAt, isActive: isActive(sessionId) }));
+          vlog("watch", "pushing file update", {
+            sessionId,
+            messages: messages.length,
+            toolCalls: toolCalls.length,
+            thoughts: thoughts.length,
+            modifiedAt,
+            ms: Date.now() - t0,
+          });
+          controller.enqueue(sseMessage("update", {
+            messages,
+            toolCalls,
+            thoughts,
+            modifiedAt,
+            isActive: isActive(sessionId),
+          }));
         } catch (err) {
           vlog("watch", "pushFileUpdate error", sessionId, String(err));
         }
       };
 
       if (jsonlPath) {
-        const { messages, toolCalls, thoughts, modifiedAt: initialModified } = await readSessionMessages(workspace, sessionId);
+        const { messages, toolCalls, thoughts, modifiedAt: initialModified } =
+          await readSessionMessagesFromPath(jsonlPath, sessionId);
         lastSentModified = initialModified;
-        vlog("watch", "sending connected (file)", { sessionId, messages: messages.length, toolCalls: toolCalls.length, thoughts: thoughts.length, modifiedAt: initialModified, isActive: isActive(sessionId) });
-        controller.enqueue(sseMessage("connected", { messages, toolCalls, thoughts, modifiedAt: initialModified, isActive: isActive(sessionId) }));
+        vlog("watch", "sending connected (file)", {
+          sessionId,
+          messages: messages.length,
+          toolCalls: toolCalls.length,
+          thoughts: thoughts.length,
+          modifiedAt: initialModified,
+          isActive: isActive(sessionId),
+        });
+        controller.enqueue(sseMessage("connected", {
+          messages,
+          toolCalls,
+          thoughts,
+          modifiedAt: initialModified,
+          isActive: isActive(sessionId),
+        }));
         startFileWatcher(jsonlPath, controller, pushFileUpdate);
       } else {
         const events = getLiveEvents(sessionId);
         const { messages, toolCalls, thoughts } = parseLiveEvents(events, sessionId);
-        vlog("watch", "sending connected (live)", { sessionId, liveEvents: events.length, messages: messages.length, toolCalls: toolCalls.length, thoughts: thoughts.length });
-        controller.enqueue(sseMessage("connected", { messages, toolCalls, thoughts, modifiedAt: Date.now(), isActive: true }));
+        vlog("watch", "sending connected (live)", {
+          sessionId,
+          liveEvents: events.length,
+          messages: messages.length,
+          toolCalls: toolCalls.length,
+          thoughts: thoughts.length,
+        });
+        controller.enqueue(sseMessage("connected", {
+          messages,
+          toolCalls,
+          thoughts,
+          modifiedAt: Date.now(),
+          isActive: true,
+        }));
 
         let liveDebounce: ReturnType<typeof setTimeout> | null = null;
         unsubLive = onLiveUpdate(sessionId, () => {
@@ -116,8 +163,19 @@ export async function GET(req: Request) {
             if (cancelled) return;
             const latest = getLiveEvents(sessionId);
             const parsed = parseLiveEvents(latest, sessionId);
-            vlog("watch", "pushing live update", { sessionId, messages: parsed.messages.length, toolCalls: parsed.toolCalls.length, thoughts: parsed.thoughts.length });
-            controller.enqueue(sseMessage("update", { messages: parsed.messages, toolCalls: parsed.toolCalls, thoughts: parsed.thoughts, modifiedAt: Date.now(), isActive: isActive(sessionId) }));
+            vlog("watch", "pushing live update", {
+              sessionId,
+              messages: parsed.messages.length,
+              toolCalls: parsed.toolCalls.length,
+              thoughts: parsed.thoughts.length,
+            });
+            controller.enqueue(sseMessage("update", {
+              messages: parsed.messages,
+              toolCalls: parsed.toolCalls,
+              thoughts: parsed.thoughts,
+              modifiedAt: Date.now(),
+              isActive: isActive(sessionId),
+            }));
           }, SSE_DEBOUNCE_MS);
         });
 
@@ -139,16 +197,37 @@ export async function GET(req: Request) {
         vlog("watch", "process exit detected", sessionId);
         await new Promise((r) => setTimeout(r, PROCESS_EXIT_SETTLE_MS));
         try {
-          const { messages, toolCalls, thoughts, modifiedAt } = await readSessionMessages(workspace, sessionId);
+          const result = jsonlPath
+            ? await readSessionMessagesFromPath(jsonlPath, sessionId)
+            : await readSessionMessages(workspace, sessionId);
+          const { messages, toolCalls, thoughts, modifiedAt } = result;
           if (modifiedAt > lastSentModified) lastSentModified = modifiedAt;
-          vlog("watch", "sending final update after exit", { sessionId, messages: messages.length, toolCalls: toolCalls.length, thoughts: thoughts.length, modifiedAt });
-          controller.enqueue(sseMessage("update", { messages, toolCalls, thoughts, modifiedAt, isActive: false }));
+          vlog("watch", "sending final update after exit", {
+            sessionId,
+            messages: messages.length,
+            toolCalls: toolCalls.length,
+            thoughts: thoughts.length,
+            modifiedAt,
+          });
+          controller.enqueue(sseMessage("update", {
+            messages,
+            toolCalls,
+            thoughts,
+            modifiedAt,
+            isActive: false,
+          }));
         } catch (err) {
           vlog("watch", "exit read failed, falling back to live events", sessionId, String(err));
           const events = getLiveEvents(sessionId);
           const parsed = parseLiveEvents(events, sessionId);
           try {
-            controller.enqueue(sseMessage("update", { messages: parsed.messages, toolCalls: parsed.toolCalls, thoughts: parsed.thoughts, modifiedAt: Date.now(), isActive: false }));
+            controller.enqueue(sseMessage("update", {
+              messages: parsed.messages,
+              toolCalls: parsed.toolCalls,
+              thoughts: parsed.thoughts,
+              modifiedAt: Date.now(),
+              isActive: false,
+            }));
           } catch { /* stream closed */ }
         }
       });
