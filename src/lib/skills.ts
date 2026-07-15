@@ -12,7 +12,7 @@ export interface SkillInfo {
 const CACHE_TTL_MS = 60_000;
 const MAX_SKILL_BODY_CHARS = 80_000;
 
-let cache: { at: number; skills: SkillInfo[] } | null = null;
+const cacheByWorkspace = new Map<string, { at: number; skills: SkillInfo[] }>();
 
 function parseFrontmatter(content: string): { name?: string; description?: string } {
   if (!content.startsWith("---")) return {};
@@ -85,8 +85,10 @@ function skillRoots(workspace?: string): { root: string; source: SkillInfo["sour
 
 export function listSkills(workspace?: string, force = false): SkillInfo[] {
   const now = Date.now();
-  if (!force && cache && now - cache.at < CACHE_TTL_MS) {
-    return cache.skills;
+  const cacheKey = workspace || "";
+  const cached = cacheByWorkspace.get(cacheKey);
+  if (!force && cached && now - cached.at < CACHE_TTL_MS) {
+    return cached.skills;
   }
 
   const byName = new Map<string, SkillInfo>();
@@ -105,7 +107,7 @@ export function listSkills(workspace?: string, force = false): SkillInfo[] {
   }
 
   const skills = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
-  cache = { at: now, skills };
+  cacheByWorkspace.set(cacheKey, { at: now, skills });
   return skills;
 }
 

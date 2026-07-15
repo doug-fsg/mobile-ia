@@ -9,6 +9,7 @@ interface RunningProcess {
   mapKey: string;
   workspace: string;
   startedAt: number;
+  cleaned: boolean;
 }
 
 let globalExitHook: ProcessExitHook | null = null;
@@ -22,6 +23,8 @@ const exitListeners = new Map<string, Set<() => void>>();
 const liveEvents = new Map<string, Record<string, unknown>[]>();
 const liveListeners = new Map<string, Set<() => void>>();
 
+const MAX_LIVE_EVENTS = 2_000;
+
 export function pushLiveEvent(sessionId: string, event: Record<string, unknown>): void {
   let events = liveEvents.get(sessionId);
   if (!events) {
@@ -29,6 +32,9 @@ export function pushLiveEvent(sessionId: string, event: Record<string, unknown>)
     liveEvents.set(sessionId, events);
   }
   events.push(event);
+  if (events.length > MAX_LIVE_EVENTS) {
+    events.splice(0, events.length - MAX_LIVE_EVENTS);
+  }
 
   const listeners = liveListeners.get(sessionId);
   if (listeners) {
@@ -48,7 +54,9 @@ export function onLiveUpdate(sessionId: string, cb: () => void): () => void {
   }
   const captured = set;
   captured.add(cb);
-  return () => { captured.delete(cb); };
+  return () => {
+    captured.delete(cb);
+  };
 }
 
 export function registerProcess(
@@ -62,10 +70,14 @@ export function registerProcess(
     mapKey: requestId,
     workspace,
     startedAt: Date.now(),
+    cleaned: false,
   };
   processes.set(requestId, entry);
 
   const onExit = () => {
+    if (entry.cleaned) return;
+    entry.cleaned = true;
+
     const sid = entry.sessionId ?? entry.mapKey;
     processes.delete(entry.mapKey);
     const listeners = exitListeners.get(entry.mapKey);
@@ -85,8 +97,8 @@ export function registerProcess(
       liveListeners.delete(entry.mapKey);
     }, LIVE_EVENT_TTL_MS);
   };
-  child.on("close", onExit);
-  child.on("error", onExit);
+  child.once("close", onExit);
+  child.once("error", onExit);
 }
 
 export function onProcessExit(sessionId: string, cb: () => void): () => void {
@@ -101,17 +113,34 @@ export function onProcessExit(sessionId: string, cb: () => void): () => void {
   }
   const captured = set;
   captured.add(cb);
-  return () => { captured.delete(cb); };
+  return () => {
+    captured.delete(cb);
+  };
 }
 
 export function promoteToSessionId(requestId: string, sessionId: string): void {
-  const entry = processes.get(requestId);
+  const entry = processes.get(requestId) ?? processes.get(sessionId);
   if (!entry) return;
   entry.sessionId = sessionId;
-  if (sessionId !== requestId) {
+  if (entry.mapKey !== sessionId) {
+    processes.delete(entry.mapKey);
     processes.set(sessionId, entry);
-    processes.delete(requestId);
     entry.mapKey = sessionId;
+
+    // Move any pre-promote live events keyed by requestId
+    const pending = liveEvents.get(requestId);
+    if (pending?.length) {
+      const dest = liveEvents.get(sessionId) ?? [];
+      liveEvents.set(sessionId, [...pending, ...dest].slice(-MAX_LIVE_EVENTS));
+      liveEvents.delete(requestId);
+    }
+    const pendListeners = liveListeners.get(requestId);
+    if (pendListeners) {
+      const dest = liveListeners.get(sessionId) ?? new Set<() => void>();
+      for (const cb of pendListeners) dest.add(cb);
+      liveListeners.set(sessionId, dest);
+      liveListeners.delete(requestId);
+    }
   }
 }
 

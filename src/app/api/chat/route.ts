@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawnAgent } from "@/lib/cursor-cli";
 import { getWorkspace } from "@/lib/workspace";
+import { resolveExistingDir } from "@/lib/paths";
 import { upsertSession } from "@/lib/session-store";
 import { registerProcess, promoteToSessionId, pushLiveEvent, setProcessExitHook } from "@/lib/process-registry";
 import { chatRequestSchema, parseBody } from "@/lib/validation";
@@ -11,6 +12,8 @@ import type { ChatRequest } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+const LIVE_EVENT_TYPES = new Set(["user", "assistant", "thinking", "tool_call"]);
+
 setProcessExitHook((sessionId, workspace) => {
   void notifyAgentComplete(sessionId, workspace);
 });
@@ -20,43 +23,55 @@ function waitForSessionId(
   workspace: string,
   prompt: string,
   requestId: string,
+  resumeSessionId?: string,
 ): Promise<string | null> {
   return new Promise((resolve) => {
     let found = false;
-    let buffer = "";
+    let lineBuffer = "";
     let resolvedSessionId: string | null = null;
+    const earlyEvents: Record<string, unknown>[] = [];
+
+    const flushEarly = (sessionId: string) => {
+      for (const event of earlyEvents) {
+        pushLiveEvent(sessionId, event);
+      }
+      earlyEvents.length = 0;
+    };
 
     const timer = setTimeout(() => {
       if (!found) resolve(null);
     }, AGENT_INIT_TIMEOUT_MS);
 
     child.stdout?.on("data", (chunk: Buffer) => {
-      buffer += chunk.toString();
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
+      lineBuffer += chunk.toString();
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() || "";
 
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
-          const event = JSON.parse(line);
+          const event = JSON.parse(line) as Record<string, unknown>;
 
           if (!found && event.type === "system" && event.subtype === "init" && event.session_id) {
             found = true;
-            resolvedSessionId = event.session_id;
+            const sid = String(event.session_id);
+            // Prefer real CLI session id; on resume keep client's if CLI echoes the same.
+            resolvedSessionId =
+              resumeSessionId && resumeSessionId === sid ? resumeSessionId : sid;
             clearTimeout(timer);
-            void upsertSession(event.session_id, workspace, prompt);
-            promoteToSessionId(requestId, event.session_id);
-            resolve(event.session_id);
+            void upsertSession(resolvedSessionId, workspace, prompt);
+            promoteToSessionId(requestId, resolvedSessionId);
+            flushEarly(resolvedSessionId);
+            resolve(resolvedSessionId);
           }
 
-          if (
-            resolvedSessionId &&
-            (event.type === "user" ||
-              event.type === "assistant" ||
-              event.type === "thinking" ||
-              event.type === "tool_call")
-          ) {
-            pushLiveEvent(resolvedSessionId, event);
+          if (LIVE_EVENT_TYPES.has(event.type as string)) {
+            if (resolvedSessionId) {
+              pushLiveEvent(resolvedSessionId, event);
+            } else {
+              earlyEvents.push(event);
+              if (earlyEvents.length > 500) earlyEvents.shift();
+            }
           }
         } catch {
           // non-json line
@@ -88,7 +103,14 @@ export async function POST(req: Request) {
   if ("error" in parsed) return badRequest(parsed.error);
   const body = parsed.data;
 
-  const workspace = body.workspace || getWorkspace();
+  let workspace: string;
+  if (body.workspace) {
+    const resolved = resolveExistingDir(body.workspace);
+    if (!resolved) return badRequest("invalid workspace path");
+    workspace = resolved;
+  } else {
+    workspace = getWorkspace();
+  }
 
   try {
     const requestId = randomUUID();
@@ -104,9 +126,8 @@ export async function POST(req: Request) {
 
     registerProcess(requestId, child, workspace);
 
-    if (body.sessionId) {
-      promoteToSessionId(requestId, body.sessionId);
-    }
+    // Do not promote to resume id until CLI confirms init — avoids orphan map keys.
+    // (waitForSessionId promotes once with the real session_id.)
 
     const verbose = process.env.CLR_VERBOSE === "1";
 
@@ -121,7 +142,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const sessionId = await waitForSessionId(child, workspace, body.prompt, requestId);
+    const sessionId = await waitForSessionId(
+      child,
+      workspace,
+      body.prompt,
+      requestId,
+      body.sessionId,
+    );
 
     if (!sessionId) {
       child.kill("SIGTERM");

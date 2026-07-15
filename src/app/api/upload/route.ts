@@ -1,6 +1,7 @@
-import { join } from "path";
+import { join, resolve } from "path";
 import { mkdirSync, writeFileSync } from "fs";
 import { getWorkspace } from "@/lib/workspace";
+import { isPathInside, safeImageExt } from "@/lib/paths";
 import { serverError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const workspace = getWorkspace();
-    const dir = join(workspace, IMAGES_DIR);
+    const dir = resolve(workspace, IMAGES_DIR);
     mkdirSync(dir, { recursive: true });
 
     const paths: string[] = [];
@@ -23,9 +24,13 @@ export async function POST(req: Request) {
       if (!ALLOWED_TYPES.has(value.type)) continue;
       if (value.size > MAX_SIZE) continue;
 
-      const ext = value.name.split(".").pop() || "png";
+      const ext = safeImageExt(value.name) || (value.type === "image/png" ? "png" : value.type === "image/jpeg" ? "jpg" : value.type === "image/gif" ? "gif" : value.type === "image/webp" ? "webp" : null);
+      if (!ext) continue;
+
       const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
       const filePath = join(dir, name);
+      if (!isPathInside(dir, filePath)) continue;
+
       const buffer = Buffer.from(await value.arrayBuffer());
       writeFileSync(filePath, buffer);
       paths.push(filePath);

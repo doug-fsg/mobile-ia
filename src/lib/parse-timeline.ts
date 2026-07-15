@@ -76,8 +76,9 @@ export function isDuplicateAssistantTextEvent(
   const hasTs = typeof event.timestamp_ms === "number";
   const hasModelCall =
     typeof event.model_call_id === "string" && (event.model_call_id as string).length > 0;
-  if (hasTs && hasModelCall) return true;
-  if (!hasTs && !hasModelCall) return true;
+  // Keep only streaming deltas: timestamp_ms present, model_call_id absent.
+  if (hasModelCall) return true;
+  if (!hasTs) return true;
   return false;
 }
 
@@ -336,6 +337,10 @@ export function createTimelineBuilder(sessionId: string, baseTimestamp: number) 
 
   function pushToolFromUse(part: Record<string, unknown>): void {
     breakOpenMessage();
+    const rawId = typeof part.id === "string" ? part.id : "";
+    if (rawId && toolByCallId.has(rawId)) {
+      return;
+    }
     const ts = nextTs();
     const info = toolInfoFromUse(part, sessionId, seq, ts);
     toolByCallId.set(info.callId, info);

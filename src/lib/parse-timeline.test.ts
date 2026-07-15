@@ -156,6 +156,20 @@ describe("parseLiveEventsToTimeline", () => {
     assert.ok(toolCalls[0].timestamp < messages[1].timestamp);
   });
 
+  it("treats model_call_id-only flushes as duplicates in partial mode", () => {
+    assert.equal(
+      isDuplicateAssistantTextEvent(
+        {
+          type: "assistant",
+          model_call_id: "mc-only",
+          message: { content: [{ type: "text", text: "dup" }] },
+        },
+        true,
+      ),
+      true,
+    );
+  });
+
   it("keeps non-partial assistant messages (no timestamp_ms in stream)", () => {
     const events = [
       {
@@ -174,5 +188,31 @@ describe("parseLiveEventsToTimeline", () => {
     assert.equal(messages[0].content, "Only once");
     assert.equal(toolCalls.length, 1);
     assert.equal(toolCalls[0].command, "echo 1");
+  });
+
+  it("dedupes repeated tool_use with the same id", () => {
+    const { toolCalls } = parseJsonlEntriesToTimeline(
+      [
+        {
+          role: "assistant",
+          message: {
+            content: [
+              { type: "tool_use", id: "t1", name: "Read", input: { path: "a.ts" } },
+            ],
+          },
+        },
+        {
+          role: "assistant",
+          message: {
+            content: [
+              { type: "tool_use", id: "t1", name: "Read", input: { path: "a.ts" } },
+            ],
+          },
+        },
+      ],
+      "sess",
+      1000,
+    );
+    assert.equal(toolCalls.length, 1);
   });
 });

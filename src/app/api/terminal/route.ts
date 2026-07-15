@@ -1,5 +1,6 @@
 import { spawnTerminal, listTerminals, killTerminal, removeTerminal, signalTerminal } from "@/lib/terminal-registry";
 import { getWorkspace } from "@/lib/workspace";
+import { resolveExistingDir } from "@/lib/paths";
 import { badRequest, serverError, parseJsonBody } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,8 @@ export async function POST(req: Request) {
   const body = await parseJsonBody<{ cwd?: string }>(req);
   if (body instanceof Response) return body;
 
-  const cwd = body.cwd || getWorkspace();
+  const cwd = body.cwd ? resolveExistingDir(body.cwd) : getWorkspace();
+  if (!cwd) return badRequest("invalid cwd");
 
   try {
     const term = spawnTerminal(cwd);

@@ -129,17 +129,38 @@ function unauthorizedHtml(wrongToken = false): string {
 </html>`;
 }
 
+function misconfiguredHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>CLR</title>
+<style>body{background:#000;color:#e8e8e8;font-family:system-ui;display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;text-align:center}code{color:#999}</style>
+</head><body><div><h1 style="font-size:16px;margin-bottom:8px">AUTH_TOKEN required</h1>
+<p style="color:#999;font-size:13px;line-height:1.5">Start the app with <code>clr</code> so authentication is configured.</p></div></body></html>`;
+}
+
+function tokensEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
 export function middleware(req: NextRequest) {
-  const token = process.env.AUTH_TOKEN?.toLowerCase();
+  const token = process.env.AUTH_TOKEN;
   if (!token) {
-    return NextResponse.next();
+    if (req.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "AUTH_TOKEN not configured" }, { status: 503 });
+    }
+    return new NextResponse(misconfiguredHtml(), {
+      status: 503,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
   }
 
   const url = req.nextUrl.clone();
   const queryToken = url.searchParams.get("token");
 
   if (queryToken !== null) {
-    if (queryToken.toLowerCase() === token) {
+    if (tokensEqual(queryToken, token)) {
       url.searchParams.delete("token");
       const res = NextResponse.redirect(url);
       res.cookies.set(COOKIE_NAME, token, {
@@ -158,10 +179,12 @@ export function middleware(req: NextRequest) {
   }
 
   const cookie = req.cookies.get(COOKIE_NAME)?.value;
-  if (cookie?.toLowerCase() === token) return NextResponse.next();
+  if (cookie && tokensEqual(cookie, token)) return NextResponse.next();
 
   const auth = req.headers.get("authorization");
-  if (auth?.toLowerCase() === `bearer ${token}`) return NextResponse.next();
+  if (auth?.startsWith("Bearer ") && tokensEqual(auth.slice(7), token)) {
+    return NextResponse.next();
+  }
 
   if (req.nextUrl.pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

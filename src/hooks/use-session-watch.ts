@@ -63,23 +63,35 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
   }, []);
 
   const applyUpdate = useCallback((data: Record<string, unknown>) => {
-    if (data.modifiedAt && (data.modifiedAt as number) > lastModifiedRef.current) {
-      lastModifiedRef.current = data.modifiedAt as number;
-      if (Array.isArray(data.messages)) {
-        if ((data.messages as ChatMessage[]).length > 0) {
-          mergeMessages(data.messages as ChatMessage[]);
-        }
-      }
-      if (Array.isArray(data.toolCalls)) setToolCalls(data.toolCalls as ToolCallInfo[]);
-      if (Array.isArray(data.thoughts)) setThoughts(data.thoughts as ThoughtInfo[]);
-    } else if (Array.isArray(data.thoughts)) {
+    const incomingModified = typeof data.modifiedAt === "number" ? (data.modifiedAt as number) : 0;
+    // Accept equal timestamps (live Date.now vs file mtime races) and bump a client seq
+    // so history after a live stream is never dropped solely due to clock skew.
+    const shouldApply =
+      !incomingModified ||
+      incomingModified >= lastModifiedRef.current ||
+      Array.isArray(data.messages) ||
+      Array.isArray(data.toolCalls);
+
+    if (!shouldApply && Array.isArray(data.thoughts)) {
       setThoughts(data.thoughts as ThoughtInfo[]);
+      return;
     }
+    if (!shouldApply) return;
+
+    if (incomingModified) {
+      lastModifiedRef.current = Math.max(lastModifiedRef.current, incomingModified);
+    }
+    if (Array.isArray(data.messages) && (data.messages as ChatMessage[]).length > 0) {
+      mergeMessages(data.messages as ChatMessage[]);
+    }
+    if (Array.isArray(data.toolCalls)) setToolCalls(data.toolCalls as ToolCallInfo[]);
+    if (Array.isArray(data.thoughts)) setThoughts(data.thoughts as ThoughtInfo[]);
   }, [mergeMessages]);
 
   const startWatching = useCallback(
     (id: string, workspace?: string) => {
       stopWatching();
+      lastModifiedRef.current = 0;
 
       let url = `/api/sessions/watch?id=${encodeURIComponent(id)}`;
       if (workspace) url += `&workspace=${encodeURIComponent(workspace)}`;
@@ -142,6 +154,8 @@ export function useSessionWatch(options: UseSessionWatchOptions = {}) {
         vlog("watch-client", "EventSource error", { id, readyState: es.readyState, event: String(e) });
         if (es.readyState === EventSource.CLOSED) {
           setIsActive(false);
+          setIsWatching(false);
+          if (eventSourceRef.current === es) eventSourceRef.current = null;
           onStreamEndRef.current?.();
         }
       });

@@ -1,8 +1,8 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { readFile } from "fs/promises";
-import { join } from "path";
 import { getWorkspace } from "@/lib/workspace";
+import { resolveExistingDir, resolveInside } from "@/lib/paths";
 import { badRequest, serverError, parseJsonBody } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -52,9 +52,24 @@ async function gitOrThrow(args: string[], cwd: string): Promise<string> {
   return stdout.trim();
 }
 
-function parseWorkspace(req: Request): string {
+function parseWorkspace(req: Request): string | null {
   const url = new URL(req.url);
-  return url.searchParams.get("workspace") || getWorkspace();
+  const requested = url.searchParams.get("workspace");
+  return resolveExistingDir(requested) ?? (requested ? null : getWorkspace());
+}
+
+function sanitizeRepoFiles(cwd: string, files: string[]): string[] | null {
+  const out: string[] = [];
+  for (const f of files) {
+    if (!f || f.includes("\0")) return null;
+    // git paths are relative to repo root; reject escapes
+    if (f.startsWith("/") || /^[A-Za-z]:[\\/]/.test(f) || f.split(/[/\\]/).includes("..")) {
+      return null;
+    }
+    if (!resolveInside(cwd, f)) return null;
+    out.push(f);
+  }
+  return out;
 }
 
 async function resolveGitRoot(cwd: string): Promise<string> {
@@ -66,6 +81,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const detail = url.searchParams.get("detail");
   const rawCwd = parseWorkspace(req);
+  if (!rawCwd) return badRequest("invalid workspace path");
   const cwd = await resolveGitRoot(rawCwd);
 
   if (detail === "status") {
@@ -162,11 +178,14 @@ async function getDiff(cwd: string, file: string | null) {
     return Response.json({ diff: diff.trim() });
   }
 
+  const safe = sanitizeRepoFiles(cwd, [file]);
+  if (!safe) return badRequest("invalid file path");
+  const safeFile = safe[0];
+
   const strategies: string[][] = [
-    ["diff", "HEAD", "--", file],
-    ["diff", "--cached", "--", file],
-    ["diff", "--", file],
-    ["diff", "--no-index", "/dev/null", file],
+    ["diff", "HEAD", "--", safeFile],
+    ["diff", "--cached", "--", safeFile],
+    ["diff", "--", safeFile],
   ];
 
   let diff = "";
@@ -177,9 +196,11 @@ async function getDiff(cwd: string, file: string | null) {
 
   if (!diff) {
     try {
-      const content = await readFile(join(cwd, file), "utf-8");
+      const abs = resolveInside(cwd, safeFile);
+      if (!abs) return Response.json({ diff: "" });
+      const content = await readFile(abs, "utf-8");
       const lines = content.split("\n").map((l) => "+" + l).join("\n");
-      diff = `diff --git a/${file} b/${file}\nnew file\n--- /dev/null\n+++ b/${file}\n${lines}\n`;
+      diff = `diff --git a/${safeFile} b/${safeFile}\nnew file\n--- /dev/null\n+++ b/${safeFile}\n${lines}\n`;
     } catch {
       // file unreadable (e.g. deleted)
     }
@@ -210,7 +231,8 @@ export async function POST(req: Request) {
   }>(req);
   if (body instanceof Response) return body;
 
-  const rawCwd = body.workspace || getWorkspace();
+  const rawCwd = body.workspace ? resolveExistingDir(body.workspace) : getWorkspace();
+  if (!rawCwd) return badRequest("invalid workspace path");
   const cwd = await resolveGitRoot(rawCwd);
   const action = body.action;
 
@@ -219,7 +241,9 @@ export async function POST(req: Request) {
       case "commit": {
         if (!body.message?.trim()) return badRequest("Commit message is required");
         if (body.files?.length) {
-          await gitOrThrow(["add", "--", ...body.files], cwd);
+          const files = sanitizeRepoFiles(cwd, body.files);
+          if (!files) return badRequest("invalid file path");
+          await gitOrThrow(["add", "--", ...files], cwd);
         } else {
           await gitOrThrow(["add", "-A"], cwd);
         }
@@ -244,18 +268,24 @@ export async function POST(req: Request) {
       }
       case "stage": {
         if (!body.files?.length) return badRequest("No files specified");
-        await gitOrThrow(["add", "--", ...body.files], cwd);
+        const files = sanitizeRepoFiles(cwd, body.files);
+        if (!files) return badRequest("invalid file path");
+        await gitOrThrow(["add", "--", ...files], cwd);
         cache = null;
         return Response.json({ ok: true });
       }
       case "unstage": {
         if (!body.files?.length) return badRequest("No files specified");
-        await gitOrThrow(["reset", "HEAD", "--", ...body.files], cwd);
+        const files = sanitizeRepoFiles(cwd, body.files);
+        if (!files) return badRequest("invalid file path");
+        await gitOrThrow(["reset", "HEAD", "--", ...files], cwd);
         cache = null;
         return Response.json({ ok: true });
       }
       case "discard": {
         if (!body.files?.length) return badRequest("No files specified");
+        const files = sanitizeRepoFiles(cwd, body.files);
+        if (!files) return badRequest("invalid file path");
         const porcelain = (await gitRaw(["status", "--porcelain"], cwd)).trimEnd();
         const untrackedSet = new Set<string>();
         const newStagedSet = new Set<string>();
@@ -267,7 +297,7 @@ export async function POST(req: Request) {
         const tracked: string[] = [];
         const newStaged: string[] = [];
         const untracked: string[] = [];
-        for (const f of body.files) {
+        for (const f of files) {
           if (untrackedSet.has(f)) untracked.push(f);
           else if (newStagedSet.has(f)) newStaged.push(f);
           else tracked.push(f);

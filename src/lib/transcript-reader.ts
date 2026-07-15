@@ -183,15 +183,10 @@ async function findJsonlFile(entryPath: string, entryName: string): Promise<stri
   }
 
   if (s.isDirectory()) {
-    const inner = join(entryPath, entryName + ".jsonl");
+    const expectedName = entryName.endsWith(".jsonl") ? entryName : `${entryName}.jsonl`;
+    const inner = join(entryPath, expectedName);
     if (await pathExists(inner)) return inner;
-
-    try {
-      const files = (await readdir(entryPath)).filter((f) => f.endsWith(".jsonl"));
-      if (files.length > 0) return join(entryPath, files[0]);
-    } catch {
-      // read error
-    }
+    // Do not fall back to an arbitrary .jsonl — that leaks/mixes other sessions.
   }
 
   return null;
