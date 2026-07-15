@@ -5,6 +5,7 @@ import type { AgentMode, ModelInfo } from "@/lib/types";
 import { useHaptics } from "@/hooks/use-haptics";
 import { apiFetch } from "@/lib/api-fetch";
 import { ChevronDown, Spinner, StopIcon, PlusIcon, ArrowUp, CloseIcon } from "./icons";
+import { AutocompleteMenu, type AutocompleteItem } from "./autocomplete-menu";
 
 const MODES: { id: AgentMode; label: string }[] = [
   { id: "agent", label: "Agent" },
@@ -17,6 +18,11 @@ interface AttachedImage {
   preview: string;
 }
 
+interface AttachedSkill {
+  name: string;
+  path: string;
+}
+
 interface ChatInputProps {
   onSend: (message: string) => void;
   onStop?: () => void;
@@ -25,6 +31,19 @@ interface ChatInputProps {
   selectedMode: AgentMode;
   onModelChange: (model: string) => void;
   onModeChange: (mode: AgentMode) => void;
+  workspace?: string | null;
+}
+
+type TriggerKind = "/" | "@" | null;
+
+function detectTrigger(text: string, cursor: number): { kind: TriggerKind; query: string; start: number } {
+  const before = text.slice(0, cursor);
+  const match = before.match(/(^|[\s\n])([/@])([^\s/@]*)$/);
+  if (!match) return { kind: null, query: "", start: -1 };
+  const kind = match[2] as "/" | "@";
+  const query = match[3] || "";
+  const start = cursor - query.length - 1;
+  return { kind, query, start };
 }
 
 export function ChatInput({
@@ -35,6 +54,7 @@ export function ChatInput({
   selectedMode,
   onModelChange,
   onModeChange,
+  workspace,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [modelOpen, setModelOpen] = useState(false);
@@ -43,7 +63,15 @@ export function ChatInput({
   const [images, setImages] = useState<AttachedImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [attachedSkills, setAttachedSkills] = useState<AttachedSkill[]>([]);
+  const [acOpen, setAcOpen] = useState(false);
+  const [acKind, setAcKind] = useState<TriggerKind>(null);
+  const [acItems, setAcItems] = useState<AutocompleteItem[]>([]);
+  const [acIndex, setAcIndex] = useState(0);
+  const [acLoading, setAcLoading] = useState(false);
+  const [acStart, setAcStart] = useState(-1);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const acQueryRef = useRef("");
   const haptics = useHaptics();
 
   useEffect(() => {
@@ -61,6 +89,98 @@ export function ChatInput({
       cancelled = true;
     };
   }, []);
+
+  const fetchAutocomplete = useCallback(
+    async (kind: "/" | "@", query: string) => {
+      setAcLoading(true);
+      try {
+        const ws = workspace ? `&workspace=${encodeURIComponent(workspace)}` : "";
+        if (kind === "/") {
+          const res = await apiFetch(`/api/skills?q=${encodeURIComponent(query)}&limit=40${ws}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const items: AutocompleteItem[] = (data.skills || []).map(
+            (s: { name: string; description?: string; path: string }) => ({
+              id: `skill:${s.name}`,
+              kind: "skill" as const,
+              label: s.name,
+              detail: s.description,
+              insert: `/${s.name}`,
+              path: s.path,
+            }),
+          );
+          if (acQueryRef.current === query) {
+            setAcItems(items);
+            setAcIndex(0);
+          }
+        } else {
+          const res = await apiFetch(`/api/mentions?q=${encodeURIComponent(query)}&limit=40${ws}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const items: AutocompleteItem[] = (data.items || []).map(
+            (m: AutocompleteItem) => m,
+          );
+          if (acQueryRef.current === query) {
+            setAcItems(items);
+            setAcIndex(0);
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        setAcLoading(false);
+      }
+    },
+    [workspace],
+  );
+
+  const updateAutocomplete = useCallback(
+    (text: string, cursor: number) => {
+      const { kind, query, start } = detectTrigger(text, cursor);
+      if (!kind) {
+        setAcOpen(false);
+        setAcKind(null);
+        return;
+      }
+      setAcKind(kind);
+      setAcStart(start);
+      setAcOpen(true);
+      acQueryRef.current = query;
+      void fetchAutocomplete(kind, query);
+    },
+    [fetchAutocomplete],
+  );
+
+  const applyAutocomplete = useCallback(
+    (item: AutocompleteItem) => {
+      const ta = textareaRef.current;
+      if (!ta || acStart < 0) return;
+      const cursor = ta.selectionStart ?? value.length;
+      const before = value.slice(0, acStart);
+      const after = value.slice(cursor);
+      const insert = item.insert + (after.startsWith(" ") || after.startsWith("\n") ? "" : " ");
+      const next = before + insert + after;
+      setValue(next);
+      setAcOpen(false);
+      setAcKind(null);
+      haptics.select();
+
+      if (item.kind === "skill" && item.path) {
+        setAttachedSkills((prev) =>
+          prev.some((s) => s.name === item.label) ? prev : [...prev, { name: item.label, path: item.path! }],
+        );
+      }
+
+      requestAnimationFrame(() => {
+        const pos = before.length + insert.length;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
+        ta.style.height = "auto";
+        ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+      });
+    },
+    [acStart, value, haptics],
+  );
 
   const addImages = useCallback((files: File[]) => {
     const valid = files.filter((f) => f.type.startsWith("image/"));
@@ -108,30 +228,86 @@ export function ChatInput({
       setImages([]);
     }
 
+    // Expand attached skills into prompt so CLI/agent follows them
+    if (attachedSkills.length > 0 && prompt) {
+      const skillsParam = attachedSkills.map((s) => s.name).join(",");
+      try {
+        const bodies: string[] = [];
+        for (const s of attachedSkills) {
+          const res = await apiFetch(`/api/skills?name=${encodeURIComponent(s.name)}${
+            workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""
+          }`);
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data.skill?.body) {
+            bodies.push(`### Skill: /${s.name}\n\n${data.skill.body}`);
+          }
+        }
+        if (bodies.length > 0) {
+          prompt =
+            "The user explicitly invoked the following Agent Skill(s). Follow them carefully for this turn.\n\n" +
+            bodies.join("\n\n") +
+            "\n\n---\n\n" +
+            prompt;
+        } else {
+          prompt = `[Skills: ${skillsParam}]\n\n` + prompt;
+        }
+      } catch {
+        prompt = `[Skills: ${skillsParam}]\n\n` + prompt;
+      }
+    }
+
     if (prompt) onSend(prompt);
     setValue("");
+    setAttachedSkills([]);
+    setAcOpen(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, images, onSend, haptics, uploadImages]);
+  }, [value, images, onSend, haptics, uploadImages, attachedSkills, workspace]);
 
   const handleStop = useCallback(() => {
     haptics.tap();
     onStop?.();
   }, [onStop, haptics]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (acOpen && acItems.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setAcIndex((i) => (i + 1) % acItems.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setAcIndex((i) => (i - 1 + acItems.length) % acItems.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        applyAutocomplete(acItems[acIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setAcOpen(false);
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value);
+    const next = e.target.value;
+    setValue(next);
     const ta = e.target;
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+    updateAutocomplete(next, ta.selectionStart ?? next.length);
   };
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -163,7 +339,6 @@ export function ChatInput({
   }, []);
 
   const currentModelLabel = models.find((m) => m.id === selectedModel)?.label || selectedModel;
-
   const autoModel = models.find((m) => m.id === "auto");
   const rest = models.filter((m) => m.id !== "auto");
 
@@ -178,14 +353,55 @@ export function ChatInput({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
         >
+          <AutocompleteMenu
+            open={acOpen}
+            items={acItems}
+            selectedIndex={acIndex}
+            loading={acLoading}
+            title={acKind === "/" ? "Skills" : "Mentions (@ files, folders, skills)"}
+            onSelect={applyAutocomplete}
+            onHover={setAcIndex}
+          />
+
+          {attachedSkills.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+              {attachedSkills.map((s) => (
+                <span
+                  key={s.name}
+                  className="inline-flex items-center gap-1 rounded-md bg-accent/10 text-accent px-2 py-0.5 text-[11px]"
+                >
+                  /{s.name}
+                  <button
+                    type="button"
+                    aria-label={`Remove skill ${s.name}`}
+                    className="opacity-70 hover:opacity-100"
+                    onClick={() => setAttachedSkills((prev) => prev.filter((x) => x.name !== s.name))}
+                  >
+                    <CloseIcon size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
           <textarea
             ref={textareaRef}
             value={value}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
+            onClick={(e) => {
+              const ta = e.currentTarget;
+              updateAutocomplete(ta.value, ta.selectionStart ?? ta.value.length);
+            }}
             onPaste={handlePaste}
-            placeholder={isStreaming ? "Type to queue a message..." : "Ask Cursor anything..."}
+            placeholder={
+              isStreaming
+                ? "Type to queue a message..."
+                : "Ask Cursor…  (/ skills · @ files)"
+            }
             aria-label="Message input"
+            aria-autocomplete="list"
+            aria-expanded={acOpen}
             rows={1}
             className="w-full resize-none bg-transparent px-3.5 pt-2.5 pb-1 pr-10 text-[13px] text-text placeholder:text-text-muted focus:outline-none"
           />
@@ -230,7 +446,7 @@ export function ChatInput({
               ))}
 
               <span className="hidden sm:inline text-[10px] text-text-muted/50 ml-2 select-none">
-                Enter ↵ send · Shift+Enter newline
+                / skills · @ files · Enter send
               </span>
             </div>
 
@@ -301,7 +517,7 @@ export function ChatInput({
                 </button>
               )}
               <button
-                onClick={handleSend}
+                onClick={() => void handleSend()}
                 disabled={(!value.trim() && images.length === 0) || uploading}
                 className="p-2 rounded-md text-text-muted hover:text-text disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                 aria-label={uploading ? "Uploading..." : isStreaming ? "Queue message" : "Send message"}

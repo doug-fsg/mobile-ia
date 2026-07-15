@@ -380,6 +380,7 @@ export function ChatContainer({
         selectedMode={selectedMode}
         onModelChange={setSelectedModel}
         onModeChange={setSelectedMode}
+        workspace={workspace}
       />
 
       <GitPanel
