@@ -1,4 +1,3 @@
-import { sep } from "path";
 import { listProjects } from "@/lib/transcript-reader";
 import { listWorkspaces } from "@/lib/session-store";
 import { getWorkspace } from "@/lib/workspace";
