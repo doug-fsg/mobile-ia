@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { ChatMessage, ToolCallInfo, ThoughtInfo, StoredSession, QueuedMessage } from "@/lib/types";
 import { useHaptics } from "@/hooks/use-haptics";
-import { timeAgo } from "@/lib/format";
+import { cleanSessionTitle, timeAgo } from "@/lib/format";
 import { MessageBubble } from "./message-bubble";
 import { ToolCallCard, ToolCallGroup, TodoLogCard, ChangesSummary, isMinorToolCall } from "./tool-call-card";
 import { ThoughtCard } from "./thought-card";
@@ -57,7 +57,7 @@ function RecentSessions({
             className="w-full text-left px-3 py-2 rounded-lg bg-bg-surface hover:bg-bg-hover border border-border/50 transition-colors group"
           >
             <p className="text-[12px] text-text-secondary group-hover:text-text truncate">
-              {s.title}
+              {cleanSessionTitle(s.title, 48)}
             </p>
             <p className="text-[10px] text-text-muted mt-0.5">{timeAgo(s.updatedAt)}</p>
           </button>

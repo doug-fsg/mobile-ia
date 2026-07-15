@@ -4,6 +4,7 @@ import { homedir } from "os";
 import { existsSync, statSync } from "fs";
 import type { StoredSession, ChatMessage, ToolCallInfo, ThoughtInfo, ProjectInfo } from "@/lib/types";
 import { parseJsonlEntriesToTimeline, parseLiveEventsToTimeline } from "@/lib/parse-timeline";
+import { cleanSessionTitle } from "@/lib/format";
 import { vlog } from "@/lib/verbose";
 
 const CURSOR_PROJECTS_DIR = join(homedir(), ".cursor", "projects");
@@ -157,10 +158,7 @@ async function extractFirstUserMessage(jsonlPath: string): Promise<string> {
       const msg = entry.message as Record<string, unknown> | undefined;
       const content = msg?.content as Array<Record<string, unknown>> | undefined;
       const text: string = (content?.[0]?.text as string) || "";
-      return text
-        .replace(/<[^>]+>/g, "")
-        .trim()
-        .slice(0, 120);
+      return cleanSessionTitle(text.replace(/<[^>]+>/g, ""), 120);
     }
   }
   return "";
@@ -214,9 +212,9 @@ export async function readCursorSessions(workspace: string): Promise<StoredSessi
 
       sessions.push({
         id: sessionId,
-        title: preview.slice(0, 60),
+        title: cleanSessionTitle(preview, 60),
         workspace,
-        preview,
+        preview: cleanSessionTitle(preview, 100),
         createdAt: s.birthtimeMs,
         updatedAt: s.mtimeMs,
       });

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import type { StoredSession, ProjectInfo } from "@/lib/types";
 import { useHaptics } from "@/hooks/use-haptics";
 import { apiFetch } from "@/lib/api-fetch";
-import { timeAgo } from "@/lib/format";
+import { cleanSessionTitle, timeAgo } from "@/lib/format";
 import { RefreshIcon, CloseIcon, PlusIcon, Spinner, TrashIcon, ChevronDown } from "./icons";
 
 interface SessionSidebarProps {
@@ -132,9 +132,14 @@ function SessionTooltip({ session, children }: { session: StoredSession; childre
           style={{ left: pos.x, top: pos.y }}
         >
           <div className="relative -translate-x-1/2 -translate-y-full -mt-1.5 max-w-[240px] px-2.5 py-1.5 rounded-md bg-bg-elevated border border-border shadow-lg">
-            <p className="text-[11px] text-text leading-snug break-words">{session.title}</p>
-            {session.preview && session.preview !== session.title && (
-              <p className="text-[10px] text-text-muted mt-0.5 leading-snug break-words line-clamp-3">{session.preview}</p>
+            <p className="text-[11px] text-text leading-snug break-words">
+              {cleanSessionTitle(session.title, 80)}
+            </p>
+            {session.preview &&
+              cleanSessionTitle(session.preview, 100) !== cleanSessionTitle(session.title, 80) && (
+              <p className="text-[10px] text-text-muted mt-0.5 leading-snug break-words line-clamp-3">
+                {cleanSessionTitle(session.preview, 100)}
+              </p>
             )}
             <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-[5px] border-x-transparent border-t-[5px] border-t-border" />
           </div>
@@ -557,9 +562,11 @@ export function SessionSidebar({
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-1 min-w-0">
                           {status && <StatusIndicator status={status} />}
-                          <p className="text-[12px] font-medium truncate leading-snug">{s.title}</p>
+                          <p className="text-[12px] font-medium truncate leading-snug">
+                            {cleanSessionTitle(s.title, 48)}
+                          </p>
                         </div>
-                        <span className="text-[10px] text-text-muted shrink-0 tabular-nums">
+                        <span className="text-[10px] text-text-muted shrink-0 tabular-nums opacity-70">
                           {timeAgo(s.updatedAt)}
                         </span>
                       </div>
