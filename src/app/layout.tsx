@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Cursor Local Remote",
-  description: "Control Cursor IDE from any device on your local network",
+  description: "Controle o Cursor IDE de qualquer dispositivo na sua rede local",
   appleWebApp: {
     capable: true,
     title: "CLR",
@@ -20,6 +20,18 @@ export const viewport: Viewport = {
   themeColor: "#0a0a0b",
 };
 
+const THEME_INIT_SCRIPT = `
+(function(){
+  try{
+    var t=localStorage.getItem('clr-theme');
+    if(t==='light'||t==='dark'){
+      document.documentElement.setAttribute('data-theme',t);
+      var m=document.querySelector('meta[name="theme-color"]');
+      if(m)m.setAttribute('content',t==='light'?'#f7f7f8':'#0a0a0b');
+    }
+  }catch(e){}
+})();`;
+
 const SW_CLEANUP_SCRIPT = `
 if('serviceWorker' in navigator){
   navigator.serviceWorker.getRegistrations().then(function(r){
@@ -34,8 +46,9 @@ if('serviceWorker' in navigator){
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="pt-BR" data-theme="dark" suppressHydrationWarning>
       <body className="overscroll-none">
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: SW_CLEANUP_SCRIPT }} />
         {children}
         <PwaInstall />

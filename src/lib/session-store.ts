@@ -50,6 +50,11 @@ export async function getDb(): Promise<Database> {
   } catch {
     // column already exists
   }
+  try {
+    db.run("ALTER TABLE sessions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // column already exists
+  }
   db.run(`
     CREATE TABLE IF NOT EXISTS config (
       key TEXT PRIMARY KEY,
@@ -121,7 +126,7 @@ export async function upsertSession(
     return rowToSession({ ...existing, updated_at: now, preview });
   }
 
-  const title = firstMessage.slice(0, 60) || "New session";
+  const title = firstMessage.slice(0, 60) || "Nova sessão";
   const preview = firstMessage.slice(0, 120);
   conn.run(
     "INSERT INTO sessions (id, title, workspace, preview, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -135,8 +140,15 @@ export async function listSessions(workspace?: string, includeArchived = false):
   const conn = await getDb();
   const archivedFilter = includeArchived ? " archived = 1" : " archived = 0";
   const rows = workspace
-    ? queryAll(conn, "SELECT * FROM sessions WHERE workspace = ? AND" + archivedFilter + " ORDER BY updated_at DESC", [workspace])
-    : queryAll(conn, "SELECT * FROM sessions WHERE" + archivedFilter + " ORDER BY updated_at DESC");
+    ? queryAll(
+        conn,
+        "SELECT * FROM sessions WHERE workspace = ? AND deleted = 0 AND" + archivedFilter + " ORDER BY updated_at DESC",
+        [workspace],
+      )
+    : queryAll(
+        conn,
+        "SELECT * FROM sessions WHERE deleted = 0 AND" + archivedFilter + " ORDER BY updated_at DESC",
+      );
   return rows.map(rowToSession);
 }
 
@@ -185,14 +197,41 @@ export async function archiveAllSessions(workspace?: string, extraSessions?: Sto
 
 export async function getArchivedSessionIds(): Promise<Set<string>> {
   const conn = await getDb();
-  const rows = queryAll(conn, "SELECT id FROM sessions WHERE archived = 1");
+  const rows = queryAll(conn, "SELECT id FROM sessions WHERE archived = 1 AND deleted = 0");
   return new Set(rows.map((r) => r.id as string));
 }
 
-export async function deleteSession(sessionId: string): Promise<void> {
+/**
+ * Soft-delete: keep a tombstone so Cursor-sourced sessions stay hidden
+ * after merge (hard DELETE alone lets them reappear from transcripts).
+ */
+export async function deleteSession(sessionId: string, session?: StoredSession): Promise<void> {
   const conn = await getDb();
-  conn.run("DELETE FROM sessions WHERE id = ?", [sessionId]);
+  const existing = queryOne(conn, "SELECT id FROM sessions WHERE id = ?", [sessionId]);
+  const now = Date.now();
+
+  if (!existing) {
+    conn.run(
+      "INSERT INTO sessions (id, title, workspace, preview, created_at, updated_at, archived, deleted) VALUES (?, ?, ?, ?, ?, ?, 0, 1)",
+      [
+        sessionId,
+        session?.title || "Deleted",
+        session?.workspace || "",
+        session?.preview || "",
+        session?.createdAt || now,
+        now,
+      ],
+    );
+  } else {
+    conn.run("UPDATE sessions SET deleted = 1, updated_at = ? WHERE id = ?", [now, sessionId]);
+  }
   save();
+}
+
+export async function getDeletedSessionIds(): Promise<Set<string>> {
+  const conn = await getDb();
+  const rows = queryAll(conn, "SELECT id FROM sessions WHERE deleted = 1");
+  return new Set(rows.map((r) => r.id as string));
 }
 
 export async function getConfig(key: string): Promise<string | undefined> {

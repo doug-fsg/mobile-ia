@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { ModelInfo } from "@/lib/types";
 import { apiFetch } from "@/lib/api-fetch";
+import { applyTheme, normalizeTheme, type Theme } from "@/lib/theme";
 import { useHaptics } from "@/hooks/use-haptics";
 import { CloseIcon, ChevronDown, CheckIcon } from "./icons";
 
@@ -12,6 +13,7 @@ interface Settings {
   pwa_prompt: boolean;
   default_model: string;
   webhook_url: string;
+  theme: Theme;
 }
 
 const DEFAULTS: Settings = {
@@ -20,20 +22,21 @@ const DEFAULTS: Settings = {
   pwa_prompt: true,
   default_model: "auto",
   webhook_url: "",
+  theme: "dark",
 };
 
 const TOGGLE_LABELS: Record<"trust" | "sound" | "pwa_prompt", { label: string; description: string }> = {
   trust: {
-    label: "Workspace trust",
-    description: "Allow the agent to execute code and edit files without asking",
+    label: "Confiança no workspace",
+    description: "Permitir que o Agent execute código e edite arquivos sem pedir confirmação",
   },
   sound: {
-    label: "Sound effects",
-    description: "Play sounds on completion and errors",
+    label: "Efeitos sonoros",
+    description: "Tocar sons ao concluir e em erros",
   },
   pwa_prompt: {
-    label: "Suggest PWA install",
-    description: "Show the install-as-app prompt on page load",
+    label: "Sugerir instalação PWA",
+    description: "Mostrar o prompt de instalar como app ao carregar a página",
   },
 };
 
@@ -65,7 +68,13 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
     ])
       .then(([settingsData, modelsData]) => {
         if (cancelled) return;
-        setSettings({ ...DEFAULTS, ...settingsData.settings });
+        const next = {
+          ...DEFAULTS,
+          ...settingsData.settings,
+          theme: normalizeTheme(settingsData.settings?.theme),
+        };
+        setSettings(next);
+        applyTheme(next.theme);
         if (modelsData.models?.length > 0) setModels(modelsData.models);
       })
       .catch(() => {})
@@ -87,6 +96,23 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
         setSettings(prev);
       });
       return next;
+    });
+  }, [haptics]);
+
+  const toggleLightMode = useCallback(() => {
+    haptics.tap();
+    setSettings((prev) => {
+      const theme: Theme = prev.theme === "light" ? "dark" : "light";
+      applyTheme(theme);
+      apiFetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme }),
+      }).catch(() => {
+        applyTheme(prev.theme);
+        setSettings(prev);
+      });
+      return { ...prev, theme };
     });
   }, [haptics]);
 
@@ -157,17 +183,17 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
       {open && <div className="fixed inset-0 z-40 bg-black/60" aria-hidden="true" onClick={onClose} />}
       <div
         role="dialog"
-        aria-label="Settings"
+        aria-label="Configurações"
         aria-hidden={!open}
         className={`fixed inset-0 z-50 bg-bg-elevated transform transition-transform duration-150 flex flex-col sm:inset-auto sm:top-0 sm:right-0 sm:h-full sm:w-[300px] sm:border-l sm:border-border ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div className="flex items-center justify-between h-11 px-3 border-b border-border shrink-0">
-          <span className="text-[13px] font-medium text-text-secondary">Settings</span>
+          <span className="text-[13px] font-medium text-text-secondary">Configurações</span>
           <button
             onClick={onClose}
-            aria-label="Close settings"
+            aria-label="Fechar configurações"
             className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
           >
             <CloseIcon size={14} />
@@ -205,11 +231,34 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
                 </button>
               ))}
 
+              <button
+                onClick={toggleLightMode}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-md hover:bg-bg-hover transition-colors text-left"
+              >
+                <div className="min-w-0">
+                  <p className="text-[12px] text-text">Modo claro</p>
+                  <p className="text-[11px] text-text-muted mt-0.5 leading-tight">
+                    Usar um esquema de cores claras na interface
+                  </p>
+                </div>
+                <div
+                  className={`shrink-0 w-8 h-[18px] rounded-full transition-colors relative ${
+                    settings.theme === "light" ? "bg-success" : "bg-bg-active"
+                  }`}
+                >
+                  <div
+                    className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${
+                      settings.theme === "light" ? "translate-x-[16px]" : "translate-x-[2px]"
+                    }`}
+                  />
+                </div>
+              </button>
+
               <div className="pt-3 mt-2 border-t border-border">
                 <div className="px-3 py-2">
-                  <p className="text-[12px] text-text">Default model</p>
+                  <p className="text-[12px] text-text">Modelo padrão</p>
                   <p className="text-[11px] text-text-muted mt-0.5 leading-tight">
-                    Model used for new sessions
+                    Modelo usado em novas sessões
                   </p>
                 </div>
                 <div className="relative px-3">
@@ -245,9 +294,9 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
 
               <div className="pt-3 mt-2 border-t border-border">
                 <div className="px-3 py-2">
-                  <p className="text-[12px] text-text">Webhook notifications</p>
+                  <p className="text-[12px] text-text">Notificações via Webhook</p>
                   <p className="text-[11px] text-text-muted mt-0.5 leading-tight">
-                    Get notified when the agent finishes via any webhook
+                    Receba avisos quando o Agent terminar, via qualquer Webhook
                   </p>
                 </div>
                 <div className="px-3 space-y-2">
@@ -257,7 +306,7 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
                     onChange={(e) => handleWebhookUrlChange(e.target.value)}
                     placeholder="https://hooks.slack.com/..."
                     className="w-full px-3 py-2 rounded-md bg-bg-surface border border-border text-[12px] text-text placeholder:text-text-muted/50 focus:outline-none focus:border-text-muted transition-colors"
-                    aria-label="Webhook URL"
+                    aria-label="URL do Webhook"
                   />
                   <button
                     onClick={handleWebhookTest}
@@ -267,13 +316,13 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
                     {webhookTestStatus === "sending" && (
                       <span className="inline-block w-3 h-3 rounded-full border-2 border-text-muted border-t-transparent animate-spin" />
                     )}
-                    {webhookTestStatus === "ok" && <><CheckIcon size={12} /> Sent!</>}
-                    {webhookTestStatus === "error" && "Failed to send"}
-                    {webhookTestStatus === "idle" && "Send test"}
-                    {webhookTestStatus === "sending" && "Sending..."}
+                    {webhookTestStatus === "ok" && <><CheckIcon size={12} /> Enviado!</>}
+                    {webhookTestStatus === "error" && "Falha ao enviar"}
+                    {webhookTestStatus === "idle" && "Enviar teste"}
+                    {webhookTestStatus === "sending" && "Enviando..."}
                   </button>
                   <p className="text-[10px] text-text-muted/60 leading-tight px-0.5">
-                    Paste a Slack, Discord, or custom webhook URL to receive push notifications when the agent completes
+                    Cole uma URL de Webhook do Slack, Discord ou customizada para receber notificações quando o Agent concluir
                   </p>
                 </div>
               </div>
@@ -282,7 +331,7 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
                 <div className="px-3 py-2">
                   <p className="text-[12px] text-text">Cache</p>
                   <p className="text-[11px] text-text-muted mt-0.5 leading-tight">
-                    Clear cached data if the app feels stale
+                    Limpe os dados em cache se o app parecer desatualizado
                   </p>
                 </div>
                 <div className="px-3">
@@ -293,10 +342,10 @@ export function SettingsPanel({ open, onClose, onDefaultModelChange }: SettingsP
                     {cacheCleared ? (
                       <>
                         <CheckIcon size={12} />
-                        Cache cleared
+                        Cache limpo
                       </>
                     ) : (
-                      "Clear cache"
+                      "Limpar cache"
                     )}
                   </button>
                 </div>

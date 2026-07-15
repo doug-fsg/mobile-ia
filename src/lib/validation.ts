@@ -15,6 +15,11 @@ export const chatRequestSchema = z.object({
   mode: z.enum(["agent", "ask", "plan"]).optional(),
   workspace: z.string().max(512).optional(),
   worktree: z.boolean().optional(),
+  /** Skill names to expand server-side into the agent prompt (not shown in chat UI). */
+  skills: z
+    .array(z.string().min(1).max(120).regex(/^[a-zA-Z0-9._/-]+$/, "invalid skill name"))
+    .max(10)
+    .optional(),
 });
 
 export const deleteSessionSchema = z.object({

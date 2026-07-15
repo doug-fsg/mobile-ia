@@ -18,13 +18,14 @@ export function useMessageQueue({ selectedModel, selectedMode }: UseMessageQueue
   }, [queuedMessages]);
 
   const enqueue = useCallback(
-    (content: string) => {
+    (content: string, opts?: { skills?: string[] }) => {
       const msg: QueuedMessage = {
         id: uuid(),
         content,
         timestamp: Date.now(),
         model: selectedModel,
         mode: selectedMode,
+        skills: opts?.skills,
       };
       setQueuedMessages((prev) => [...prev, msg]);
     },

@@ -42,7 +42,7 @@ const components: Components = {
     </a>
   ),
   pre: ({ children }) => (
-    <pre className="my-2 rounded-lg bg-[#0d0d0d] border border-border px-3.5 py-3 overflow-x-auto">
+    <pre className="my-2 rounded-lg bg-bg-surface border border-border px-3.5 py-3 overflow-x-auto">
       {children}
     </pre>
   ),
@@ -52,7 +52,7 @@ const components: Components = {
       return <code className={`${className} text-[12px] leading-[1.7] font-mono`}>{children}</code>;
     }
     return (
-      <code className="px-1.5 py-0.5 rounded bg-[#1c1c1c] text-[#d4d4d4] text-[12px] font-mono">
+      <code className="px-1.5 py-0.5 rounded bg-bg-active text-text text-[12px] font-mono">
         {children}
       </code>
     );

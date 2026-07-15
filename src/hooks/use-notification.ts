@@ -81,7 +81,7 @@ export function useNotification() {
     const badgeHref = createBadgeFavicon(badgeColor);
     if (badgeHref) setFavicon(badgeHref);
 
-    const flashTitle = type === "error" ? "Error - CLR" : "Done! - CLR";
+    const flashTitle = type === "error" ? "Erro - CLR" : "Concluído! - CLR";
     let toggle = true;
     flashIntervalRef.current = setInterval(() => {
       document.title = toggle ? flashTitle : ORIGINAL_TITLE;

@@ -29,7 +29,7 @@ export function ThoughtCard({ thought, defaultExpanded = false }: ThoughtCardPro
           setExpanded((v) => !v);
         }}
         aria-expanded={expanded}
-        aria-label="Model thinking"
+        aria-label="Raciocínio do modelo"
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
       >
         <span className={isStreaming ? "text-text-secondary" : "text-text-muted"}>
@@ -54,7 +54,7 @@ export function ThoughtCard({ thought, defaultExpanded = false }: ThoughtCardPro
 
         <span className="flex items-center gap-1.5 min-w-0 flex-1">
           <span className={`font-medium ${isStreaming ? "text-text-secondary" : "text-text-muted"}`}>
-            Thought
+            Pensamento
           </span>
           {!expanded && (
             <span className="font-mono truncate text-text-muted/80">{previewText(thought.content)}</span>

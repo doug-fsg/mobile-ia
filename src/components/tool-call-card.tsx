@@ -182,17 +182,17 @@ function DiffBlock({ diff, startLine }: { diff: string; startLine?: number }) {
 function actionLabel(tc: ToolCallInfo): string {
   switch (tc.type) {
     case "read":
-      return "Reading";
+      return "Lendo";
     case "write":
-      return "Writing";
+      return "Escrevendo";
     case "edit":
-      return "Editing";
+      return "Editando";
     case "shell":
-      return "Running";
+      return "Executando";
     case "search":
-      return "Searching";
+      return "Buscando";
     case "todo":
-      return "Updating";
+      return "Atualizando";
     default:
       return tc.name;
   }
@@ -204,12 +204,12 @@ function summaryText(tc: ToolCallInfo): string {
   }
 
   if (tc.type === "search" && tc.command) {
-    const dir = tc.path ? ` in ${shortenPath(tc.path)}` : "";
+    const dir = tc.path ? ` em ${shortenPath(tc.path)}` : "";
     return `"${tc.command}"${dir}`;
   }
 
   if (tc.type === "todo") {
-    return "todo list";
+    return "lista Todo";
   }
 
   if (tc.path) {
@@ -241,7 +241,7 @@ export function ToolCallGroup({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
       <button
         onClick={() => { haptics.tap(); setExpanded((v) => !v); }}
         aria-expanded={expanded}
-        aria-label={`Tool call group: ${groupSummary(toolCalls)}`}
+        aria-label={`Grupo de ferramentas: ${groupSummary(toolCalls)}`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
       >
         <span className={statusColor}>
@@ -350,7 +350,7 @@ export function ToolCallCard({ toolCall, defaultExpanded }: ToolCallCardProps) {
             <p className="text-text-secondary">{toolCall.result}</p>
           )}
 
-          {isRunning && <p className="text-text-muted animate-pulse">running...</p>}
+          {isRunning && <p className="text-text-muted animate-pulse">executando...</p>}
         </div>
       )}
     </div>
@@ -407,8 +407,8 @@ function FileChangeRow({ change }: { change: FileChange }) {
           {change.edits > 0 && change.writes > 0
             ? `${change.edits}e ${change.writes}w`
             : change.edits > 0
-              ? `${change.edits} edit${change.edits > 1 ? "s" : ""}`
-              : `${change.writes} write${change.writes > 1 ? "s" : ""}`}
+              ? `${change.edits} Edit`
+              : `${change.writes} Write`}
         </span>
         {hasDiffs && <ChevronDown className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />}
       </button>
@@ -430,15 +430,15 @@ export function ChangesSummary({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
   const totalEdits = changes.reduce((s, c) => s + c.edits, 0);
   const totalWrites = changes.reduce((s, c) => s + c.writes, 0);
   const parts: string[] = [];
-  if (totalEdits > 0) parts.push(`${totalEdits} edit${totalEdits > 1 ? "s" : ""}`);
-  if (totalWrites > 0) parts.push(`${totalWrites} write${totalWrites > 1 ? "s" : ""}`);
+  if (totalEdits > 0) parts.push(`${totalEdits} Edit`);
+  if (totalWrites > 0) parts.push(`${totalWrites} Write`);
 
   return (
     <div className="py-2">
       <button
         onClick={() => { haptics.tap(); setExpanded((v) => !v); }}
         aria-expanded={expanded}
-        aria-label={`Changes summary: ${changes.length} files`}
+        aria-label={`Resumo de alterações: ${changes.length} arquivos`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
       >
         <svg
@@ -456,7 +456,7 @@ export function ChangesSummary({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
           <line x1="9" y1="15" x2="15" y2="15" />
         </svg>
         <span className="font-medium text-text-secondary">
-          {changes.length} file{changes.length > 1 ? "s" : ""} changed
+          {changes.length} arquivo{changes.length > 1 ? "s" : ""} alterado{changes.length > 1 ? "s" : ""}
         </span>
         <span className="text-text-muted text-[11px]">{parts.join(", ")}</span>
         <ChevronDown className={`shrink-0 transition-transform ml-auto ${expanded ? "rotate-180" : ""}`} />
@@ -484,7 +484,7 @@ export function TodoLogCard({ toolCall, defaultOpen = true }: { toolCall: ToolCa
       <button
         onClick={() => { haptics.tap(); setOpen((v) => !v); }}
         aria-expanded={open}
-        aria-label={`Todo list: ${done}/${todos.length} done`}
+        aria-label={`Lista Todo: ${done}/${todos.length} concluídos`}
         className="flex items-center gap-2 text-[12px] text-text-muted hover:text-text-secondary transition-colors w-full text-left"
       >
         <svg
@@ -501,7 +501,7 @@ export function TodoLogCard({ toolCall, defaultOpen = true }: { toolCall: ToolCa
         </svg>
         <span className="font-medium text-text-secondary">Todo</span>
         <span className="text-text-muted text-[11px]">
-          {done}/{todos.length} done{inProgress > 0 ? ` · ${inProgress} active` : ""}
+          {done}/{todos.length} concluídos{inProgress > 0 ? ` · ${inProgress} ativos` : ""}
         </span>
         <ChevronDown className={`shrink-0 transition-transform ml-auto ${open ? "rotate-180" : ""}`} />
       </button>

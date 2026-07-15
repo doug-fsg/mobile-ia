@@ -39,7 +39,7 @@ function formatTodoList(todos: TodoItem[]): string {
 function formatForDiscord(payload: WebhookPayload): Record<string, unknown> {
   const color = payload.event === "test" ? 0x5865f2 : 0x57f287;
   const parts = [payload.message];
-  if (payload.url) parts.push(`\n[Open in CLR](${payload.url})`);
+  if (payload.url) parts.push(`\n[Abrir no CLR](${payload.url})`);
   return {
     embeds: [{
       title: payload.title,
@@ -51,7 +51,7 @@ function formatForDiscord(payload: WebhookPayload): Record<string, unknown> {
 }
 
 function formatForSlack(payload: WebhookPayload): Record<string, unknown> {
-  const link = payload.url ? `\n<${payload.url}|Open in CLR>` : "";
+  const link = payload.url ? `\n<${payload.url}|Abrir no CLR>` : "";
   return { text: `*${payload.title}*\n${payload.message}${link}` };
 }
 
@@ -121,12 +121,12 @@ export async function notifyAgentComplete(sessionId: string, workspace: string):
       parts.push(formatTodoList(todos));
     }
     if (parts.length === 0) {
-      parts.push(`Session ${sessionId.slice(0, 8)} completed`);
+      parts.push(`Sessão ${sessionId.slice(0, 8)} concluída`);
     }
 
     await sendWebhook(url, {
       event: "agent_complete",
-      title: `Done - ${project}`,
+      title: `Concluído - ${project}`,
       message: parts.join("\n\n"),
       url: buildSessionUrl(sessionId, workspace),
       sessionId,

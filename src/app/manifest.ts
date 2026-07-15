@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/",
     name: "Cursor Local Remote",
     short_name: "CLR",
-    description: "Control Cursor IDE from any device on your local network",
+    description: "Controle o Cursor IDE de qualquer dispositivo na sua rede local",
     start_url: "/",
     display: "standalone",
     background_color: "#0a0a0b",

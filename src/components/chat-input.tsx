@@ -24,7 +24,7 @@ interface AttachedSkill {
 }
 
 interface ChatInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, opts?: { skills?: string[] }) => void;
   onStop?: () => void;
   isStreaming?: boolean;
   selectedModel: string;
@@ -224,7 +224,7 @@ export function ChatInput({
       try {
         const paths = await uploadImages(images);
         if (paths.length > 0) {
-          const refs = paths.map((p) => `[Attached image: ${p}]`).join("\n");
+          const refs = paths.map((p) => `[Imagem anexada: ${p}]`).join("\n");
           prompt = prompt ? prompt + "\n\n" + refs : refs;
         }
       } catch {
@@ -236,43 +236,16 @@ export function ChatInput({
       setImages([]);
     }
 
-    // Expand attached skills into prompt so CLI/agent follows them
-    if (attachedSkills.length > 0 && prompt) {
-      const skillsParam = attachedSkills.map((s) => s.name).join(",");
-      try {
-        const bodies: string[] = [];
-        for (const s of attachedSkills) {
-          const res = await apiFetch(`/api/skills?name=${encodeURIComponent(s.name)}${
-            workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""
-          }`);
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (data.skill?.body) {
-            bodies.push(`### Skill: /${s.name}\n\n${data.skill.body}`);
-          }
-        }
-        if (bodies.length > 0) {
-          prompt =
-            "The user explicitly invoked the following Agent Skill(s). Follow them carefully for this turn.\n\n" +
-            bodies.join("\n\n") +
-            "\n\n---\n\n" +
-            prompt;
-        } else {
-          prompt = `[Skills: ${skillsParam}]\n\n` + prompt;
-        }
-      } catch {
-        prompt = `[Skills: ${skillsParam}]\n\n` + prompt;
-      }
-    }
-
-    if (prompt) onSend(prompt);
+    // Skills expand server-side — keep the chat bubble clean.
+    const skills = attachedSkills.map((s) => s.name);
+    if (prompt) onSend(prompt, skills.length ? { skills } : undefined);
     setValue("");
     setAttachedSkills([]);
     setAcOpen(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-  }, [value, images, onSend, haptics, uploadImages, attachedSkills, workspace]);
+  }, [value, images, onSend, haptics, uploadImages, attachedSkills]);
 
   const handleStop = useCallback(() => {
     haptics.tap();
@@ -366,7 +339,7 @@ export function ChatInput({
             items={acItems}
             selectedIndex={acIndex}
             loading={acLoading}
-            title={acKind === "/" ? "Skills" : "Mentions (@ files, folders, skills)"}
+            title={acKind === "/" ? "Skills" : "Menções (@ arquivos, pastas, skills)"}
             onSelect={applyAutocomplete}
             onHover={setAcIndex}
           />
@@ -381,7 +354,7 @@ export function ChatInput({
                   /{s.name}
                   <button
                     type="button"
-                    aria-label={`Remove skill ${s.name}`}
+                    aria-label={`Remover skill ${s.name}`}
                     className="opacity-70 hover:opacity-100"
                     onClick={() => setAttachedSkills((prev) => prev.filter((x) => x.name !== s.name))}
                   >
@@ -404,10 +377,10 @@ export function ChatInput({
             onPaste={handlePaste}
             placeholder={
               isStreaming
-                ? "Type to queue a message..."
-                : "Ask Cursor…  (/ skills · @ files)"
+                ? "Digite para enfileirar uma mensagem..."
+                : "Pergunte ao Cursor…  (/ skills · @ arquivos)"
             }
-            aria-label="Message input"
+            aria-label="Campo de mensagem"
             aria-autocomplete="list"
             aria-expanded={acOpen}
             rows={1}
@@ -423,7 +396,7 @@ export function ChatInput({
                   <button
                     onClick={() => removeImage(i)}
                     className="absolute top-0 right-0 p-0.5 bg-black/70 rounded-bl text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Remove image"
+                    aria-label="Remover imagem"
                   >
                     <CloseIcon size={10} />
                   </button>
@@ -433,7 +406,7 @@ export function ChatInput({
           )}
 
           <div className="flex items-center justify-between px-2 pb-2">
-            <div className="flex items-center gap-1" role="radiogroup" aria-label="Agent mode">
+            <div className="flex items-center gap-1" role="radiogroup" aria-label="Modo do Agent">
               {MODES.map((mode) => (
                 <button
                   key={mode.id}
@@ -458,13 +431,13 @@ export function ChatInput({
                   type="button"
                   role="switch"
                   aria-checked={worktree}
-                  aria-label="Worktree mode"
+                  aria-label="Modo Worktree"
                   title={
                     worktreeLocked
-                      ? "Worktree applies only to new sessions"
+                      ? "Worktree só se aplica a novas sessões"
                       : worktree
-                        ? "New sessions run in an isolated git worktree"
-                        : "Enable isolated git worktree for new sessions"
+                        ? "Novas sessões rodam em um git worktree isolado"
+                        : "Ativar git worktree isolado para novas sessões"
                   }
                   disabled={worktreeLocked}
                   onClick={() => {
@@ -484,7 +457,7 @@ export function ChatInput({
               )}
 
               <span className="hidden sm:inline text-[10px] text-text-muted/50 ml-2 select-none">
-                / skills · @ files · Enter send
+                / skills · @ arquivos · Enter envia
               </span>
             </div>
 
@@ -497,7 +470,7 @@ export function ChatInput({
                   }}
                   aria-haspopup="listbox"
                   aria-expanded={modelOpen}
-                  aria-label="Select model"
+                  aria-label="Selecionar modelo"
                   className="flex items-center gap-1 px-3 py-1.5 rounded text-[12px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
                 >
                   {modelsLoading ? (
@@ -511,7 +484,7 @@ export function ChatInput({
                 {modelOpen && models.length > 0 && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setModelOpen(false)} />
-                    <div role="listbox" aria-label="Models" className="absolute bottom-full right-0 mb-1 z-50 w-56 bg-bg-elevated border border-border rounded-lg shadow-xl py-1 max-h-80 overflow-y-auto">
+                    <div role="listbox" aria-label="Modelos" className="absolute bottom-full right-0 mb-1 z-50 w-56 bg-bg-elevated border border-border rounded-lg shadow-xl py-1 max-h-80 overflow-y-auto">
                       {autoModel && (
                         <ModelRow
                           key={autoModel.id}
@@ -549,7 +522,7 @@ export function ChatInput({
                 <button
                   onClick={handleStop}
                   className="p-2 rounded-md text-text-muted hover:text-text transition-colors"
-                  aria-label="Stop streaming"
+                  aria-label="Parar streaming"
                 >
                   <StopIcon />
                 </button>
@@ -558,7 +531,7 @@ export function ChatInput({
                 onClick={() => void handleSend()}
                 disabled={(!value.trim() && images.length === 0) || uploading}
                 className="p-2 rounded-md text-text-muted hover:text-text disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                aria-label={uploading ? "Uploading..." : isStreaming ? "Queue message" : "Send message"}
+                aria-label={uploading ? "Enviando..." : isStreaming ? "Enfileirar mensagem" : "Enviar mensagem"}
               >
                 {uploading ? <Spinner className="w-4 h-4" /> : isStreaming ? <PlusIcon size={18} /> : <ArrowUp />}
               </button>
@@ -598,12 +571,12 @@ function ModelRow({
       <span className="flex items-center gap-1 shrink-0">
         {model.isDefault && (
           <span className="text-[9px] px-1 py-px rounded bg-bg-hover text-text-secondary font-medium">
-            default
+            padrão
           </span>
         )}
         {model.isCurrent && (
           <span className="text-[9px] px-1 py-px rounded bg-success/15 text-success font-medium">
-            current
+            atual
           </span>
         )}
       </span>

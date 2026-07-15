@@ -61,7 +61,7 @@ function statusLabel(status: string): string {
 
 function DiffView({ diff }: { diff: string }) {
   if (!diff) {
-    return <p className="text-text-muted text-[11px] px-3 py-2">No diff available</p>;
+    return <p className="text-text-muted text-[11px] px-3 py-2">Diff indisponível</p>;
   }
   const lines = diff.split("\n");
   return (
@@ -133,7 +133,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
         const files = (data.files as FileStatus[]) ?? [];
         setSelected(new Set(files.map((f) => f.file)));
       })
-      .catch(() => setError("Failed to load git status"))
+      .catch(() => setError("Falha ao carregar status do git"))
       .finally(() => setLoading(false));
   }, [wsParam]);
 
@@ -169,7 +169,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       apiFetch(`/api/git?detail=diff&file=${encodeURIComponent(file)}${wsParam}`)
         .then((r) => r.json())
         .then((data) => setFileDiffs((prev) => ({ ...prev, [file]: data.diff || "" })))
-        .catch(() => setFileDiffs((prev) => ({ ...prev, [file]: "Failed to load diff" })))
+        .catch(() => setFileDiffs((prev) => ({ ...prev, [file]: "Falha ao carregar diff" })))
         .finally(() => setLoadingDiff(null));
     },
     [expandedFile, fileDiffs, wsParam],
@@ -208,14 +208,14 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       const res = await gitAction("discard", workspace, { files: Array.from(selected) });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Discard failed");
+        throw new Error(data.error || "Descarte falhou");
       }
       setFileDiffs({});
       setExpandedFile(null);
       haptics.warn();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Discard failed");
+      setError(err instanceof Error ? err.message : "Descarte falhou");
       haptics.error();
     } finally {
       setDiscardingSelected(false);
@@ -233,7 +233,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Commit failed");
+        throw new Error(data.error || "Commit falhou");
       }
       setCommitMsg("");
       setCommitted(true);
@@ -243,7 +243,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       haptics.send();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Commit failed");
+      setError(err instanceof Error ? err.message : "Commit falhou");
       haptics.error();
     } finally {
       setCommitting(false);
@@ -257,14 +257,14 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       const res = await gitAction("push", workspace);
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Push failed");
+        throw new Error(data.error || "Push falhou");
       }
       setPushed(true);
       setTimeout(() => setPushed(false), 2000);
       haptics.send();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Push failed");
+      setError(err instanceof Error ? err.message : "Push falhou");
       haptics.error();
     } finally {
       setPushing(false);
@@ -278,14 +278,14 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       const res = await gitAction("fetch", workspace);
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Fetch failed");
+        throw new Error(data.error || "Fetch falhou");
       }
       setFetched(true);
       setTimeout(() => setFetched(false), 2000);
       haptics.tap();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Fetch failed");
+      setError(err instanceof Error ? err.message : "Fetch falhou");
       haptics.error();
     } finally {
       setFetching(false);
@@ -299,7 +299,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       const res = await gitAction("pull", workspace);
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Pull failed");
+        throw new Error(data.error || "Pull falhou");
       }
       setPulled(true);
       setTimeout(() => setPulled(false), 2000);
@@ -308,7 +308,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       haptics.tap();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pull failed");
+      setError(err instanceof Error ? err.message : "Pull falhou");
       haptics.error();
     } finally {
       setPulling(false);
@@ -322,7 +322,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       const res = await gitAction("checkout", workspace, { branch });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Checkout failed");
+        throw new Error(data.error || "Checkout falhou");
       }
       setBranchDropdownOpen(false);
       setFileDiffs({});
@@ -330,7 +330,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       haptics.tap();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Checkout failed");
+      setError(err instanceof Error ? err.message : "Checkout falhou");
       haptics.error();
     } finally {
       setSwitchingBranch(false);
@@ -346,14 +346,14 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
       const res = await gitAction("create_branch", workspace, { branch: name });
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Create branch failed");
+        throw new Error(data.error || "Falha ao criar branch");
       }
       setNewBranchName("");
       setBranchDropdownOpen(false);
       haptics.send();
       fetchStatus();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create branch failed");
+      setError(err instanceof Error ? err.message : "Falha ao criar branch");
       haptics.error();
     } finally {
       setCreatingBranch(false);
@@ -401,12 +401,12 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                 setFileDiffs({});
               }}
               disabled={loading}
-              aria-label="Refresh"
+              aria-label="Atualizar"
               className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors disabled:opacity-40"
             >
               <RefreshIcon size={13} className={loading ? "animate-spin" : ""} />
             </button>
-            <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors">
+            <button onClick={onClose} aria-label="Fechar" className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors">
               <CloseIcon size={13} />
             </button>
           </div>
@@ -428,7 +428,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                     <input
                       value={newBranchName}
                       onChange={(e) => setNewBranchName(e.target.value)}
-                      placeholder="New branch name..."
+                      placeholder="Nome da nova branch..."
                       className="flex-1 min-w-0 rounded border border-border bg-bg-surface px-2 py-1 text-[11px] text-text placeholder:text-text-muted/50 focus:outline-none focus:border-text-muted/40"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -442,7 +442,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                       disabled={!newBranchName.trim() || creatingBranch}
                       className="shrink-0 px-2 py-1 rounded text-[10px] font-medium bg-bg-surface border border-border text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-40"
                     >
-                      {creatingBranch ? <Spinner className="w-2.5 h-2.5" /> : "Create"}
+                      {creatingBranch ? <Spinner className="w-2.5 h-2.5" /> : "Criar"}
                     </button>
                   </div>
                   <div className="overflow-y-auto flex-1 py-1">
@@ -457,14 +457,14 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                         }`}
                       >
                         {b}
-                        {b === branches.current && <span className="text-text-muted ml-1">(current)</span>}
+                        {b === branches.current && <span className="text-text-muted ml-1">(atual)</span>}
                       </button>
                     ))}
                     {branches && branches.remoteOnly.length > 0 && (
                       <>
                         <div className="h-px bg-border mx-2 my-1" />
                         <div className="px-3 py-1">
-                          <span className="text-[9px] font-medium uppercase tracking-wider text-text-muted">Remote</span>
+                          <span className="text-[9px] font-medium uppercase tracking-wider text-text-muted">Remoto</span>
                         </div>
                         {branches.remoteOnly.map((b) => (
                           <button
@@ -495,20 +495,20 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
           {loading && !status ? (
             <div className="flex items-center justify-center py-12"><Spinner /></div>
           ) : !status?.branch ? (
-            <p className="text-text-muted text-[12px] text-center py-12">Not a git repository</p>
+            <p className="text-text-muted text-[12px] text-center py-12">Não é um repositório git</p>
           ) : !hasChanges ? (
             <div className="text-center py-12">
-              <p className="text-text-muted text-[12px]">Working tree clean</p>
+              <p className="text-text-muted text-[12px]">Working tree limpa</p>
               {status.ahead > 0 && (
                 <p className="text-text-secondary text-[11px] mt-1">
-                  {status.ahead} commit{status.ahead > 1 ? "s" : ""} ahead of remote
+                  {status.ahead} commit{status.ahead > 1 ? "s" : ""} à frente do remoto
                 </p>
               )}
             </div>
           ) : (
             <div className="py-1">
               <div className="flex items-center gap-2 px-3 py-1.5">
-                <button onClick={toggleAll} className="shrink-0 w-4 text-center" aria-label="Toggle all">
+                <button onClick={toggleAll} className="shrink-0 w-4 text-center" aria-label="Selecionar todos">
                   <span className={`text-[11px] font-bold transition-colors ${
                     allSelected ? "text-text-secondary" : "text-text-muted/40"
                   }`}>
@@ -516,7 +516,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                   </span>
                 </button>
                 <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted flex-1">
-                  {selectedCount}/{allFiles.length} file{allFiles.length !== 1 ? "s" : ""}
+                  {selectedCount}/{allFiles.length} arquivo{allFiles.length !== 1 ? "s" : ""}
                 </span>
                 {selectedCount > 0 && (
                   confirmDiscard ? (
@@ -526,11 +526,11 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                         disabled={discardingSelected}
                         className="px-2 py-0.5 rounded text-[10px] font-medium bg-error/15 text-error hover:bg-error/25 transition-colors disabled:opacity-40"
                       >
-                        {discardingSelected ? <Spinner className="w-2.5 h-2.5" /> : `Discard ${selectedCount}`}
+                        {discardingSelected ? <Spinner className="w-2.5 h-2.5" /> : `Descartar ${selectedCount}`}
                       </button>
                       <button
                         onClick={() => setConfirmDiscard(false)}
-                        aria-label="Cancel"
+                        aria-label="Cancelar"
                         className="p-0.5 rounded text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
                       >
                         <CloseIcon size={9} />
@@ -541,7 +541,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                       onClick={handleDiscardSelected}
                       className="px-2 py-0.5 rounded text-[10px] font-medium text-text-muted/50 hover:text-error hover:bg-error/10 transition-colors"
                     >
-                      Discard
+                      Descartar
                     </button>
                   )
                 )}
@@ -574,7 +574,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                 {fetching ? <Spinner className="w-3 h-3" /> : fetched ? <CheckIcon size={11} /> : (
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.22-8.56" /><polyline points="21 3 21 9 15 9" /></svg>
                 )}
-                {fetched ? "Fetched" : "Fetch"}
+                {fetched ? "Fetch feito" : "Fetch"}
               </button>
               <button
                 onClick={handlePull}
@@ -584,7 +584,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                 {pulling ? <Spinner className="w-3 h-3" /> : pulled ? <CheckIcon size={11} /> : (
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></svg>
                 )}
-                {pulled ? "Pulled" : "Pull"}
+                {pulled ? "Pull feito" : "Pull"}
               </button>
               <button
                 onClick={handlePush}
@@ -594,7 +594,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                 {pushing ? <Spinner className="w-3 h-3" /> : pushed ? <CheckIcon size={11} /> : (
                   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
                 )}
-                {pushed ? "Pushed" : "Push"}
+                {pushed ? "Push feito" : "Push"}
               </button>
             </div>
             {hasChanges && (
@@ -602,7 +602,7 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                 <textarea
                   value={commitMsg}
                   onChange={(e) => setCommitMsg(e.target.value)}
-                  placeholder="Commit message..."
+                  placeholder="Mensagem do Commit..."
                   rows={2}
                   className="w-full resize-none rounded-md border border-border bg-bg-surface px-2.5 py-2 text-[12px] text-text placeholder:text-text-muted/50 focus:outline-none focus:border-text-muted/40"
                   onKeyDown={(e) => {
@@ -618,9 +618,9 @@ export function GitPanel({ open, onClose, workspace }: GitPanelProps) {
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-[12px] font-medium bg-bg-surface border border-border text-text-secondary hover:text-text hover:bg-bg-hover transition-colors disabled:opacity-40 disabled:pointer-events-none"
                 >
                   {committing ? <Spinner className="w-3 h-3" /> : committed ? <CheckIcon size={12} /> : null}
-                  {committed ? "Committed" : selectedCount === allFiles.length ? "Commit all" : `Commit ${selectedCount} file${selectedCount !== 1 ? "s" : ""}`}
+                  {committed ? "Commit feito" : selectedCount === allFiles.length ? "Commit tudo" : `Commit ${selectedCount} arquivo${selectedCount !== 1 ? "s" : ""}`}
                 </button>
-                <p className="text-[10px] text-text-muted/50 text-center">⌘+Enter to commit</p>
+                <p className="text-[10px] text-text-muted/50 text-center">⌘+Enter para commit</p>
               </>
             )}
           </div>
@@ -655,7 +655,7 @@ function FileRow({
           expanded ? "bg-bg-hover/50" : ""
         }`}
       >
-        <button onClick={onToggleCheck} className="shrink-0 w-4 text-center" aria-label={checked ? "Deselect" : "Select"}>
+        <button onClick={onToggleCheck} className="shrink-0 w-4 text-center" aria-label={checked ? "Desmarcar" : "Selecionar"}>
           <span className={`text-[11px] font-bold transition-colors ${
             checked ? "text-text-secondary" : "text-text-muted/30"
           }`}>

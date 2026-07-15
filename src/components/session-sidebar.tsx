@@ -227,7 +227,7 @@ export function SessionSidebar({
     return apiFetch("/api/sessions" + (qs ? "?" + qs : ""))
       .then((r) => r.json())
       .then((data) => setSessions(data.sessions || []))
-      .catch(() => setFetchError("Failed to load sessions"));
+      .catch(() => setFetchError("Falha ao carregar sessões"));
   }, [selectedProject, showArchived]);
 
   useEffect(() => {
@@ -253,21 +253,31 @@ export function SessionSidebar({
     }
   }, [onWorkspaceChange]);
 
-  const handleDeleteClick = (e: React.MouseEvent, sessionId: string) => {
+  const handleDeleteClick = (e: React.MouseEvent, session: StoredSession) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (confirmingDelete === sessionId) {
+    if (confirmingDelete === session.id) {
       haptics.error();
+      // Optimistic remove — Cursor transcripts rematerialize the row unless
+      // the server keeps a tombstone (now handled in DELETE).
+      setSessions((prev) => prev.filter((s) => s.id !== session.id));
+      setConfirmingDelete(null);
       apiFetch("/api/sessions", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({ sessionId: session.id, workspace: session.workspace }),
       })
-        .then(() => fetchSessions())
-        .catch(() => setFetchError("Failed to delete session"))
-        .finally(() => setConfirmingDelete(null));
+        .then(async (res) => {
+          if (!res.ok) throw new Error("delete failed");
+          await fetchSessions();
+        })
+        .catch(() => {
+          setFetchError("Falha ao excluir sessão");
+          void fetchSessions();
+        });
     } else {
       haptics.warn();
-      setConfirmingDelete(sessionId);
+      setConfirmingDelete(session.id);
     }
   };
 
@@ -280,7 +290,7 @@ export function SessionSidebar({
       body: JSON.stringify({ action: showArchived ? "unarchive" : "archive", sessionId: session.id, workspace: session.workspace }),
     })
       .then(() => fetchSessions())
-      .catch(() => setFetchError("Failed to update session"));
+      .catch(() => setFetchError("Falha ao atualizar sessão"));
   };
 
   const handleArchiveAll = () => {
@@ -292,7 +302,7 @@ export function SessionSidebar({
       body: JSON.stringify({ action: "archive_all", workspace }),
     })
       .then(() => fetchSessions())
-      .catch(() => setFetchError("Failed to archive sessions"));
+      .catch(() => setFetchError("Falha ao arquivar sessões"));
   };
 
   const handleCancelDelete = (e: React.MouseEvent) => {
@@ -301,24 +311,31 @@ export function SessionSidebar({
   };
 
   const currentProjectName = selectedProject === "__all__"
-    ? "All projects"
+    ? "Todos os projetos"
     : projects.find((p) => p.path === selectedProject)?.name
       || selectedProject?.split("/").pop()
-      || "Current project";
+      || "Projeto atual";
 
   return (
     <>
       {open && <div className="fixed inset-0 z-40 bg-black/60" aria-hidden="true" onClick={onClose} />}
       <div
         role="dialog"
-        aria-label="Session history"
+        aria-label="Histórico de sessões"
         aria-hidden={!open}
-        className={`fixed inset-0 z-50 bg-bg-elevated transform transition-transform duration-150 flex flex-col sm:inset-auto sm:top-0 sm:left-0 sm:h-full sm:w-[280px] sm:border-r sm:border-border ${
+        className={`fixed inset-0 z-50 bg-bg-elevated transform transition-transform duration-150 flex flex-col sm:inset-auto sm:top-0 sm:left-0 sm:h-full sm:w-[300px] sm:border-r sm:border-border ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between h-11 px-3 border-b border-border shrink-0">
-          <span className="text-[13px] font-medium text-text-secondary">Sessions</span>
+        <div className="flex items-center justify-between h-12 px-3 border-b border-border shrink-0">
+          <div className="flex flex-col min-w-0">
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-text-muted">
+              Workspace
+            </span>
+            <span className="text-[13px] font-medium text-text truncate leading-tight">
+              Sessões
+            </span>
+          </div>
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => {
@@ -327,36 +344,39 @@ export function SessionSidebar({
                 fetchSessions().finally(() => setLoading(false));
               }}
               disabled={loading}
-              aria-label="Refresh sessions"
-              className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors disabled:opacity-40"
+              aria-label="Atualizar sessões"
+              className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors disabled:opacity-40"
             >
               <RefreshIcon size={14} className={loading ? "animate-spin" : ""} />
             </button>
             <button
               onClick={onClose}
-              aria-label="Close sidebar"
-              className="p-1 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
+              aria-label="Fechar barra lateral"
+              className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
             >
               <CloseIcon size={14} />
             </button>
           </div>
         </div>
 
-        <div className="px-2 pt-2 pb-1 space-y-1 shrink-0">
+        <div className="px-2.5 pt-2.5 pb-2 space-y-2 shrink-0 border-b border-border/60">
           <button
             onClick={() => {
               const ws = selectedProject && selectedProject !== "__all__" ? selectedProject : undefined;
               onNewSession(ws);
               onClose();
             }}
-            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-md text-[12px] font-medium text-text bg-bg-surface border border-border hover:bg-bg-hover hover:border-text-muted/30 transition-colors"
           >
             <PlusIcon />
-            New session
+            Nova sessão
           </button>
 
           {starred.length > 0 && (
             <div className="space-y-px">
+              <p className="px-1 text-[10px] uppercase tracking-[0.12em] text-text-muted mb-0.5">
+                Favoritos
+              </p>
               {starred.map((path) => {
                 const proj = projects.find((p) => p.path === path);
                 const name = proj?.name || path.split("/").pop() || path;
@@ -368,11 +388,11 @@ export function SessionSidebar({
                     onClick={() => handleProjectSelect(path)}
                     className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
                       isActive
-                        ? "bg-bg-active text-text"
+                        ? "bg-bg-active text-text shadow-[inset_2px_0_0_0_var(--color-accent-rail)]"
                         : "text-text-muted hover:text-text-secondary hover:bg-bg-hover"
                     }`}
                   >
-                    <StarIcon size={10} filled className="shrink-0 text-text-secondary" />
+                    <StarIcon size={10} filled className="shrink-0 text-accent-rail" />
                     <span className="truncate">{name}</span>
                     {termCount > 0 && (
                       <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-success" />
@@ -389,7 +409,7 @@ export function SessionSidebar({
                 haptics.tap();
                 setProjectDropdownOpen((v) => !v);
               }}
-              className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-[12px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
+              className="w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-md text-[12px] text-text-muted hover:text-text-secondary hover:bg-bg-hover border border-transparent hover:border-border transition-colors"
             >
               <span className="truncate">{currentProjectName}</span>
               <ChevronDown />
@@ -406,7 +426,7 @@ export function SessionSidebar({
                         : "text-text-secondary hover:bg-bg-hover hover:text-text"
                     }`}
                   >
-                    All projects
+                    Todos os projetos
                   </button>
                   <div className="h-px bg-border mx-2 my-1" />
                   {projects.map((p) => {
@@ -433,10 +453,10 @@ export function SessionSidebar({
                         <span
                           onClick={(e) => toggleStar(e, p.path)}
                           className={`shrink-0 p-0.5 rounded hover:bg-bg-active transition-colors ${
-                            starred.includes(p.path) ? "text-text-secondary" : "text-text-muted/30 hover:text-text-muted"
+                            starred.includes(p.path) ? "text-accent-rail" : "text-text-muted/30 hover:text-text-muted"
                           }`}
                           role="button"
-                          aria-label={starred.includes(p.path) ? "Unstar project" : "Star project"}
+                          aria-label={starred.includes(p.path) ? "Remover dos favoritos" : "Favoritar projeto"}
                         >
                           <StarIcon size={12} filled={starred.includes(p.path)} />
                         </span>
@@ -448,35 +468,54 @@ export function SessionSidebar({
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 p-0.5 rounded-md bg-bg-surface border border-border">
             <button
               onClick={() => {
-                haptics.tap();
-                setShowArchived((v) => !v);
+                if (showArchived) {
+                  haptics.tap();
+                  setShowArchived(false);
+                }
               }}
-              aria-pressed={showArchived}
-              className={`flex-1 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] transition-colors ${
-                showArchived
-                  ? "text-text bg-bg-active"
-                  : "text-text-muted hover:text-text-secondary hover:bg-bg-hover"
+              aria-pressed={!showArchived}
+              className={`flex-1 px-2 py-1.5 rounded text-[11px] font-medium transition-colors ${
+                !showArchived
+                  ? "bg-bg-active text-text"
+                  : "text-text-muted hover:text-text-secondary"
               }`}
             >
-              <ArchiveIcon />
-              {showArchived ? "Archived" : "Archive"}
+              Ativas
             </button>
-            {!showArchived && sessions.length > 0 && (
-              <button
-                onClick={handleArchiveAll}
-                title="Archive all visible sessions"
-                className="px-2 py-1.5 rounded-md text-[10px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors whitespace-nowrap"
-              >
-                Archive all
-              </button>
-            )}
+            <button
+              onClick={() => {
+                if (!showArchived) {
+                  haptics.tap();
+                  setShowArchived(true);
+                }
+              }}
+              aria-pressed={showArchived}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-[11px] font-medium transition-colors ${
+                showArchived
+                  ? "bg-bg-active text-text"
+                  : "text-text-muted hover:text-text-secondary"
+              }`}
+            >
+              <ArchiveIcon size={11} />
+              Arquivadas
+            </button>
           </div>
+
+          {!showArchived && sessions.length > 0 && (
+            <button
+              onClick={handleArchiveAll}
+              title="Arquivar todas as sessões visíveis"
+              className="w-full px-2 py-1 rounded-md text-[10px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
+            >
+              Arquivar todas visíveis
+            </button>
+          )}
         </div>
 
-        <div className="overflow-y-auto flex-1 px-2 pb-2">
+        <div className="overflow-y-auto flex-1 px-2 py-2">
           {fetchError && (
             <div className="mx-1 mb-2 px-2.5 py-2 rounded-md bg-error/10 text-error text-[11px]">
               {fetchError}
@@ -488,33 +527,39 @@ export function SessionSidebar({
             </div>
           ) : sessions.length === 0 && !fetchError ? (
             <p className="text-text-muted text-[12px] text-center py-8">
-              {showArchived ? "No archived sessions" : "No sessions"}
+              {showArchived ? "Nenhuma sessão arquivada" : "Nenhuma sessão"}
             </p>
           ) : (
             sessions.map((s) => {
               const status = activeStatuses[s.id];
+              const isCurrent = s.id === currentSessionId;
+              const isConfirming = confirmingDelete === s.id;
               return (
                 <SessionTooltip key={s.id} session={s}>
-                  <div className="relative mb-px">
+                  <div
+                    className={`group relative mb-1 rounded-md border transition-colors ${
+                      isCurrent
+                        ? "bg-bg-active border-border shadow-[inset_2px_0_0_0_var(--color-accent-rail)]"
+                        : "border-transparent hover:bg-bg-hover hover:border-border/80"
+                    }`}
+                  >
                     <button
                       onClick={() => {
                         haptics.select();
                         onSelectSession(s.id, s.workspace);
                         onClose();
                       }}
-                      aria-current={s.id === currentSessionId ? "true" : undefined}
-                      className={`group w-full text-left px-2.5 py-2 rounded-md transition-colors ${
-                        s.id === currentSessionId
-                          ? "bg-bg-active text-text"
-                          : "hover:bg-bg-hover text-text-secondary"
+                      aria-current={isCurrent ? "true" : undefined}
+                      className={`w-full text-left px-2.5 py-2 pr-16 transition-colors ${
+                        isCurrent ? "text-text" : "text-text-secondary"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 flex-1 min-w-0 pr-12">
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
                           {status && <StatusIndicator status={status} />}
-                          <p className="text-[12px] truncate">{s.title}</p>
+                          <p className="text-[12px] font-medium truncate leading-snug">{s.title}</p>
                         </div>
-                        <span className="text-[10px] text-text-muted shrink-0">
+                        <span className="text-[10px] text-text-muted shrink-0 tabular-nums">
                           {timeAgo(s.updatedAt)}
                         </span>
                       </div>
@@ -525,34 +570,46 @@ export function SessionSidebar({
                       )}
                     </button>
 
-                    {confirmingDelete === s.id ? (
-                      <div className="absolute top-1 right-1 flex items-center gap-1">
+                    {isConfirming ? (
+                      <div className="absolute top-1/2 -translate-y-1/2 right-1 flex items-center gap-1 bg-bg-elevated/95 rounded-md p-0.5 border border-border shadow-sm z-10">
                         <button
-                          onClick={(e) => handleDeleteClick(e, s.id)}
+                          type="button"
+                          onClick={(e) => handleDeleteClick(e, s)}
                           className="px-2 py-1 rounded text-[10px] font-medium bg-error/15 text-error hover:bg-error/25 transition-colors"
                         >
-                          Delete
+                          Confirmar
                         </button>
                         <button
+                          type="button"
                           onClick={handleCancelDelete}
-                          aria-label="Cancel delete"
+                          aria-label="Cancelar exclusão"
                           className="p-1 rounded text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
                         >
                           <CloseIcon size={10} />
                         </button>
                       </div>
                     ) : (
-                      <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                      <div
+                        className={`absolute top-1/2 -translate-y-1/2 right-1 flex items-center gap-0.5 rounded-md bg-bg-elevated/90 border border-border/80 p-0.5 z-10 transition-opacity ${
+                          isCurrent
+                            ? "opacity-100"
+                            : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                        }`}
+                      >
                         <button
+                          type="button"
                           onClick={(e) => handleArchiveClick(e, s)}
-                          aria-label={showArchived ? "Unarchive session" : "Archive session"}
+                          aria-label={showArchived ? "Desarquivar sessão" : "Arquivar sessão"}
+                          title={showArchived ? "Desarquivar" : "Arquivar"}
                           className="p-1.5 rounded hover:bg-bg-surface text-text-muted hover:text-text-secondary transition-colors"
                         >
                           {showArchived ? <UnarchiveIcon /> : <ArchiveIcon />}
                         </button>
                         <button
-                          onClick={(e) => handleDeleteClick(e, s.id)}
-                          aria-label="Delete session"
+                          type="button"
+                          onClick={(e) => handleDeleteClick(e, s)}
+                          aria-label="Excluir sessão"
+                          title="Excluir"
                           className="p-1.5 rounded hover:bg-bg-surface text-text-muted hover:text-error transition-colors"
                         >
                           <TrashIcon />

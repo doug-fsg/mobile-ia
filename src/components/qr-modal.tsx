@@ -26,7 +26,7 @@ export function QrModal({ open, onClose }: QrModalProps) {
         if (!cancelled) setInfo(data);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load network info");
+        if (!cancelled) setError("Não foi possível carregar informações de rede");
       });
     return () => {
       cancelled = true;
@@ -45,12 +45,12 @@ export function QrModal({ open, onClose }: QrModalProps) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Connect device via QR code"
+        aria-label="Conectar dispositivo via QR"
         className="bg-bg-elevated border border-border rounded-xl p-6 max-w-xs w-full mx-4 text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-[13px] font-medium text-text mb-1">Connect device</p>
-        <p className="text-[12px] text-text-muted mb-5">Scan from any device on your network</p>
+        <p className="text-[13px] font-medium text-text mb-1">Conectar dispositivo</p>
+        <p className="text-[12px] text-text-muted mb-5">Escaneie a partir de qualquer dispositivo na sua rede</p>
 
         {info ? (
           <>
@@ -71,7 +71,7 @@ export function QrModal({ open, onClose }: QrModalProps) {
           onClick={() => { haptics.tap(); onClose(); }}
           className="mt-4 w-full py-1.5 rounded-lg text-[12px] text-text-muted hover:text-text-secondary transition-colors"
         >
-          Close
+          Fechar
         </button>
       </div>
     </div>

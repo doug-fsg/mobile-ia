@@ -142,7 +142,7 @@ if (args.includes("--version") || args.includes("-V")) {
 if (args.includes("--status")) {
   const portStart = parseInt(process.env.PORT || "3100", 10);
   const portEnd = portStart + MAX_STATUS_SCAN;
-  console.log(`\n  Checking ports ${portStart}-${portEnd - 1} for running CLR instances...\n`);
+  console.log(`\n  Verificando portas ${portStart}-${portEnd - 1} em busca de instâncias CLR...\n`);
   let found = 0;
   const checks = [];
   for (let p = portStart; p < portEnd; p++) {
@@ -152,11 +152,11 @@ if (args.includes("--status")) {
   for (const r of results) {
     if (!r) continue;
     found++;
-    console.log(`  \x1b[32m●\x1b[0m  Port ${r.port}  \x1b[2m→\x1b[0m  ${r.workspace}`);
+    console.log(`  \x1b[32m●\x1b[0m  Porta ${r.port}  \x1b[2m→\x1b[0m  ${r.workspace}`);
     console.log(`     \x1b[2m${r.url}\x1b[0m`);
   }
   if (found === 0) {
-    console.log("  \x1b[2mNo running CLR instances found\x1b[0m");
+    console.log("  \x1b[2mNenhuma instância CLR em execução\x1b[0m");
   }
   console.log("");
   process.exit(0);
@@ -165,9 +165,9 @@ if (args.includes("--status")) {
 if (args.includes("--list") || args.includes("-l")) {
   const projects = discoverProjects();
   if (projects.length === 0) {
-    console.log("\n  \x1b[2mNo Cursor projects found\x1b[0m\n");
+    console.log("\n  \x1b[2mNenhum projeto Cursor encontrado\x1b[0m\n");
   } else {
-    console.log(`\n  Found ${projects.length} project${projects.length === 1 ? "" : "s"}:\n`);
+    console.log(`\n  Encontrado${projects.length === 1 ? "" : "s"} ${projects.length} projeto${projects.length === 1 ? "" : "s"}:\n`);
     for (const p of projects) {
       console.log(`  \x1b[2m•\x1b[0m  ${p.name}  \x1b[2m→\x1b[0m  ${p.path}`);
     }
@@ -179,12 +179,12 @@ if (args.includes("--list") || args.includes("-l")) {
 if (args.includes("--update") || args.includes("-u")) {
   const pkg = JSON.parse(readFileSync(resolve(projectRoot, "package.json"), "utf8"));
   const updateSpec = pkg.clrUpdate || "cursor-local-remote@latest";
-  console.log(`  Updating ${updateSpec}...\n`);
+  console.log(`  Atualizando ${updateSpec}...\n`);
   try {
     execFileSync("npm", ["install", "-g", updateSpec], { stdio: "inherit", shell: true });
-    console.log("\n  \x1b[32m✓ Updated successfully\x1b[0m");
+    console.log("\n  \x1b[32m✓ Atualizado com sucesso\x1b[0m");
   } catch {
-    console.error("\n  \x1b[31m✗ Update failed\x1b[0m");
+    console.error("\n  \x1b[31m✗ Falha na atualização\x1b[0m");
     process.exit(1);
   }
   process.exit(0);
@@ -192,39 +192,39 @@ if (args.includes("--update") || args.includes("-u")) {
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
-  Cursor Local Remote - Control Cursor IDE from any device on your network
+  Cursor Local Remote - Controle o Cursor IDE de qualquer dispositivo na sua rede
 
-  Usage:
+  Uso:
     clr [workspace] [options]
 
-  Arguments:
-    workspace    Path to your project folder (defaults to current directory)
+  Argumentos:
+    workspace    Caminho da pasta do projeto (padrão: diretório atual)
 
-  Options:
-    -p, --port     Port to run on (default: 3100)
-    -t, --token    Auth token (default: 123, or AUTH_TOKEN env)
-    --host         Bind to specific host/IP (default: 0.0.0.0)
-    --no-open      Don't auto-open the browser
-    --no-qr        Don't show QR code in terminal
-    --no-trust     Disable workspace trust (agent will ask before actions)
-    -v, --verbose  Show all server and agent output
+  Opções:
+    -p, --port     Porta (padrão: 3100)
+    -t, --token    Token (padrão: 123, ou AUTH_TOKEN)
+    --host         Host/IP (padrão: 0.0.0.0)
+    --no-open      Não abrir o navegador
+    --no-qr        Não exibir QR code
+    --no-trust     Desativar workspace trust
+    -v, --verbose  Logs detalhados
 
-  Commands:
-    -l, --list     List discovered Cursor projects
-    --status       Check if CLR is already running
-    -u, --update   Update to the latest version
-    -V, --version  Show version number
-    -h, --help     Show this help
+  Comandos:
+    -l, --list     Listar projetos Cursor descobertos
+    --status       Verificar se o CLR já está em execução
+    -u, --update   Atualizar para a versão mais recente
+    -V, --version  Mostrar número da versão
+    -h, --help     Mostrar esta ajuda
 
-  Examples:
-    clr                          # Start in current folder
-    clr ~/projects/my-app        # Start for a specific project
-    clr . --port 8080            # Use a different port
-    clr --token my-secret        # Use a fixed auth token
-    clr --host 127.0.0.1         # Bind to localhost only
-    clr --no-trust               # Require agent to ask before actions
-    clr --status                 # Check for running instances
-    clr --list                   # Show all known projects
+  Exemplos:
+    clr                          # Iniciar na pasta atual
+    clr ~/projects/my-app        # Iniciar para um projeto específico
+    clr . --port 8080            # Usar outra porta
+    clr --token my-secret        # Usar um token de autenticação fixo
+    clr --host 127.0.0.1         # Vincular apenas ao localhost
+    clr --no-trust               # Exigir confirmação do agente antes das ações
+    clr --status                 # Verificar instâncias em execução
+    clr --list                   # Mostrar todos os projetos conhecidos
 `);
   process.exit(0);
 }
@@ -263,13 +263,13 @@ for (let i = 0; i < args.length; i++) {
 
 const portNum = parseInt(rawPort, 10);
 if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-  console.error(`  Error: invalid port: ${rawPort}`);
+  console.error(`  Erro: porta inválida: ${rawPort}`);
   process.exit(1);
 }
 const workspace = positional[0] ? resolve(positional[0]) : process.cwd();
 
 if (!existsSync(workspace)) {
-  console.error(`  Error: workspace path does not exist: ${workspace}`);
+  console.error(`  Erro: o caminho do workspace não existe: ${workspace}`);
   process.exit(1);
 }
 
@@ -308,11 +308,11 @@ function getLanIp() {
 
 const availablePort = await findAvailablePort(portNum);
 if (availablePort === null) {
-  console.error(`  Error: no available port found starting from ${portNum}`);
+  console.error(`  Erro: nenhuma porta disponível a partir de ${portNum}`);
   process.exit(1);
 }
 if (availablePort !== portNum) {
-  console.log(`  \x1b[33mPort ${portNum} in use, using ${availablePort}\x1b[0m`);
+  console.log(`  \x1b[33mPorta ${portNum} em uso, usando ${availablePort}\x1b[0m`);
 }
 const port = String(availablePort);
 
@@ -340,20 +340,20 @@ if (networkUrl) {
 console.log(`  \x1b[2mAuth token:\x1b[0m  \x1b[97m${authToken}\x1b[0m`);
 console.log(`  \x1b[2mAuth link:\x1b[0m   \x1b[4m\x1b[97m${authUrl}\x1b[0m`);
 if (verbose) {
-  console.log(`  \x1b[2mVerbose:\x1b[0m     \x1b[33mon\x1b[0m`);
+  console.log(`  \x1b[2mVerbose:\x1b[0m     \x1b[33mligado\x1b[0m`);
 }
 console.log("");
 
 const qrUrl = networkUrl ? `${networkUrl}?token=${authToken}` : null;
 
 if (!noQr && qrUrl) {
-  console.log("  \x1b[2mScan to connect from your phone:\x1b[0m");
+  console.log("  \x1b[2mEscaneie para conectar pelo celular:\x1b[0m");
   console.log("");
   qrcode.generate(qrUrl, { small: true }, (code) => {
     const indented = code.split("\n").map((l) => "    " + l).join("\n");
     console.log(indented);
     console.log("");
-    console.log("  \x1b[2mPress Ctrl+C to stop\x1b[0m");
+    console.log("  \x1b[2mPressione Ctrl+C para parar\x1b[0m");
     console.log("");
   });
 }
@@ -400,7 +400,7 @@ child.stdout.on("data", (data) => {
     process.stdout.write("  \x1b[2m[next]\x1b[0m " + text);
   }
   if (!ready && (text.includes("Ready") || text.includes("ready"))) {
-    console.log("  \x1b[32m✓ Ready\x1b[0m");
+    console.log("  \x1b[32m✓ Pronto\x1b[0m");
     ready = true;
     openBrowser();
   }

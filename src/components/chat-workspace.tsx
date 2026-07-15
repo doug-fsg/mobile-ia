@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useHaptics } from "@/hooks/use-haptics";
 import { fetchActiveSessions } from "@/hooks/use-chat";
 import { apiFetch } from "@/lib/api-fetch";
+import { applyTheme, normalizeTheme } from "@/lib/theme";
 import { vlog } from "@/lib/verbose";
 import { ChatContainer } from "./chat-container";
 import { SessionSidebar } from "./session-sidebar";
@@ -25,7 +26,7 @@ function makeInstance(initialSessionId?: string, initialWorkspace?: string): Cha
   return {
     id: uuid(),
     sessionId: null,
-    label: initialSessionId ? "Loading..." : "New chat",
+    label: initialSessionId ? "Carregando..." : "Novo chat",
     isStreaming: false,
     initialSessionId,
     initialWorkspace,
@@ -70,6 +71,7 @@ export function ChatWorkspace() {
       .then((r) => r.json())
       .then((data) => {
         if (data.settings?.default_model) setDefaultModel(data.settings.default_model);
+        if (data.settings?.theme) applyTheme(normalizeTheme(data.settings.theme));
       })
       .catch(() => {});
   }, []);

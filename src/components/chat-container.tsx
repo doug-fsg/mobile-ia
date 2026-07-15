@@ -233,7 +233,7 @@ export function ChatContainer({
               haptics.tap();
               onOpenSidebar?.();
             }}
-            aria-label="Open session sidebar"
+            aria-label="Abrir barra de sessões"
             className="p-2 rounded-md hover:bg-bg-hover transition-colors text-text-muted hover:text-text-secondary"
           >
             <MenuIcon />
@@ -284,7 +284,7 @@ export function ChatContainer({
             <button
               onClick={handleExport}
               className="p-2 rounded-md hover:bg-bg-hover transition-colors text-text-muted hover:text-text-secondary"
-              aria-label={exportCopied ? "Copied to clipboard" : "Export conversation"}
+              aria-label={exportCopied ? "Copiado para a área de transferência" : "Exportar conversa"}
             >
               {exportCopied ? <CheckIcon size={14} /> : <ExportIcon size={14} />}
             </button>
@@ -295,7 +295,7 @@ export function ChatContainer({
               onOpenSettings?.();
             }}
             className="p-2 rounded-md hover:bg-bg-hover transition-colors text-text-muted hover:text-text-secondary"
-            aria-label="Settings"
+            aria-label="Configurações"
           >
             <SettingsIcon size={16} />
           </button>
@@ -305,7 +305,7 @@ export function ChatContainer({
               onOpenQr?.();
             }}
             className="p-2 rounded-md hover:bg-bg-hover transition-colors text-text-muted hover:text-text-secondary"
-            aria-label="Connect device"
+            aria-label="Conectar dispositivo"
           >
             <svg
               width="20"
@@ -341,7 +341,7 @@ export function ChatContainer({
           }`}
         >
           <span>
-            {notification.pending.type === "error" ? "Agent errored" : "Agent finished"}
+            {notification.pending.type === "error" ? "Agent com erro" : "Agent concluído"}
             {notification.pending.elapsed !== null && notification.pending.elapsed !== undefined && notification.pending.elapsed > 0 && (
               <span className="opacity-60 ml-1">
                 ({notification.pending.elapsed >= 60
@@ -353,7 +353,7 @@ export function ChatContainer({
           <button
             onClick={notification.dismiss}
             className="p-0.5 rounded hover:bg-bg-hover transition-colors"
-            aria-label="Dismiss notification"
+            aria-label="Dispensar notificação"
           >
             <CloseIcon size={12} />
           </button>

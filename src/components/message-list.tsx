@@ -47,7 +47,7 @@ function RecentSessions({
   return (
     <div className="mt-5 w-full max-w-xs">
       <p className="text-text-muted text-[11px] font-medium mb-2 uppercase tracking-wider">
-        Recent sessions
+        Sessões recentes
       </p>
       <div className="space-y-1">
         {sessions.map((s) => (
@@ -104,7 +104,7 @@ function QueuedMessageCard({
             <div className="flex flex-col gap-1.5">
               <textarea
                 autoFocus
-                aria-label="Edit queued message"
+                aria-label="Editar mensagem na fila"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -122,13 +122,13 @@ function QueuedMessageCard({
                   onClick={save}
                   className="px-2 py-0.5 text-[10px] font-medium rounded bg-bg-active text-text hover:bg-bg-hover transition-colors"
                 >
-                  Save
+                  Salvar
                 </button>
                 <button
                   onClick={cancel}
                   className="px-2 py-0.5 text-[10px] font-medium rounded text-text-muted hover:text-text-secondary transition-colors"
                 >
-                  Cancel
+                  Cancelar
                 </button>
               </div>
             </div>
@@ -141,13 +141,13 @@ function QueuedMessageCard({
       </div>
       {!editing && (
         <div className="flex items-center gap-1 mt-1.5 ml-5">
-          <span className="text-[10px] text-text-muted/50 mr-1">Queued</span>
+          <span className="text-[10px] text-text-muted/50 mr-1">Na fila</span>
           <button
             onClick={() => { haptics.send(); onForceSend(); }}
             className="px-2 py-0.5 text-[10px] font-medium rounded bg-bg-active text-text-secondary hover:text-text transition-colors"
-            title="Stop current and send this now"
+            title="Parar o atual e enviar este agora"
           >
-            Send now
+            Enviar agora
           </button>
           <button
             onClick={() => {
@@ -157,13 +157,13 @@ function QueuedMessageCard({
             }}
             className="px-2 py-0.5 text-[10px] font-medium rounded text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
           >
-            Edit
+            Editar
           </button>
           <button
             onClick={() => { haptics.warn(); onDelete(); }}
             className="px-2 py-0.5 text-[10px] font-medium rounded text-text-muted hover:text-error/80 hover:bg-error/5 transition-colors"
           >
-            Delete
+            Excluir
           </button>
         </div>
       )}
@@ -285,7 +285,7 @@ export function MessageList({
       <div className="flex-1 flex items-center justify-center">
         <div className="flex items-center gap-2 text-text-muted text-[13px]">
           <Spinner className="w-3.5 h-3.5" />
-          Loading session...
+          Carregando sessão...
         </div>
       </div>
     );
@@ -297,7 +297,7 @@ export function MessageList({
         <div className="flex flex-col items-center max-w-sm">
           <p className="text-text-secondary text-[13px] font-medium mb-1">Cursor Remote</p>
           <p className="text-text-muted text-[12px] leading-relaxed">
-            Send a message to start an agent session.
+            Envie uma mensagem para iniciar uma sessão do Agent.
           </p>
           {onSelectSession && (
             <RecentSessions sessions={recentSessions} onSelect={onSelectSession} />
@@ -360,14 +360,14 @@ export function MessageList({
           {showThinking && (
             <div className="py-3 flex items-center gap-2 text-text-muted text-[12px]">
               <Spinner />
-              Thinking...
+              Pensando...
             </div>
           )}
 
           {isWatching && !isStreaming && timeline.length > 0 && (
             <div className="py-3 flex items-center gap-2 text-text-muted text-[11px]">
               <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              Watching for updates...
+              Aguardando atualizações...
             </div>
           )}
 
@@ -376,10 +376,10 @@ export function MessageList({
               <button
                 onClick={() => { haptics.tap(); onRetry?.(); }}
                 className="flex items-center gap-1 text-[10px] text-text-muted/60 hover:text-text-muted transition-colors"
-                aria-label="Retry last message"
+                aria-label="Tentar novamente a última mensagem"
               >
                 <RetryIcon />
-                Retry last message
+                Tentar novamente a última mensagem
               </button>
             </div>
           )}
@@ -405,11 +405,11 @@ export function MessageList({
       {!autoScroll && timeline.length > 0 && (
         <button
           onClick={scrollToBottom}
-          aria-label="Scroll to bottom"
+          aria-label="Rolar para o final"
           className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-bg-elevated border border-border text-text-muted hover:text-text-secondary text-[11px] shadow-lg transition-colors"
         >
           <ArrowDown />
-          Scroll to bottom
+          Rolar para o final
         </button>
       )}
     </div>

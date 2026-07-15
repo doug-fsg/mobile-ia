@@ -1,4 +1,5 @@
 import type { ChatMessage, ToolCallInfo } from "@/lib/types";
+import { parseUserMessageContent } from "@/lib/message-display";
 
 function toolCallLine(tc: ToolCallInfo): string {
   const label = tc.type === "shell" ? "Shell" : tc.type === "search" ? "Search" : tc.type === "edit" ? "Edit" : tc.type === "write" ? "Write" : tc.type === "read" ? "Read" : tc.name;
@@ -16,8 +17,18 @@ export function exportSessionMarkdown(messages: ChatMessage[], toolCalls: ToolCa
 
   for (const item of items) {
     if (item.kind === "msg" && item.msg) {
-      const role = item.msg.role === "user" ? "User" : "Assistant";
-      parts.push(`## ${role}\n\n${item.msg.content}`);
+      const role = item.msg.role === "user" ? "Você" : "Assistente";
+      let body = item.msg.content;
+      if (item.msg.role === "user") {
+        const parsed = parseUserMessageContent(body);
+        const skills =
+          item.msg.skills?.length ? item.msg.skills : parsed.skills;
+        const chips = skills.length
+          ? skills.map((s) => `\`/${s}\``).join(" ") + "\n\n"
+          : "";
+        body = chips + (parsed.text || body);
+      }
+      parts.push(`## ${role}\n\n${body}`);
     } else if (item.kind === "tc" && item.tc) {
       parts.push(toolCallLine(item.tc));
     }

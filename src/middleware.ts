@@ -6,7 +6,7 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
 function unauthorizedHtml(wrongToken = false): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -106,15 +106,15 @@ function unauthorizedHtml(wrongToken = false): string {
       <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
       <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
     </svg>
-    <h1>Authentication required</h1>
-    <p class="sub">Paste the token from your terminal to connect.</p>
+    <h1>Autenticação necessária</h1>
+    <p class="sub">Cole o token do terminal para conectar.</p>
 
     <form id="auth" class="input-group" onsubmit="return handleSubmit(event)">
-      <input id="token" type="text" placeholder="Paste token here" autocomplete="off" spellcheck="false" autofocus class="${wrongToken ? "shake" : ""}" />
-      <button type="submit">Connect</button>
+      <input id="token" type="text" placeholder="Cole o token aqui" autocomplete="off" spellcheck="false" autofocus class="${wrongToken ? "shake" : ""}" />
+      <button type="submit">Conectar</button>
     </form>
-    ${wrongToken ? '<p class="error-msg">Wrong token. Check your terminal for the correct one.</p>' : ""}
-    <p class="hint">Run <code>clr</code> in your terminal to see the QR code and token.</p>
+    ${wrongToken ? '<p class="error-msg">Token incorreto. Confira no terminal o token certo.</p>' : ""}
+    <p class="hint">Execute <code>clr</code> no terminal para ver o QR code e o token.</p>
   </div>
   <script>
     function handleSubmit(e) {
@@ -131,10 +131,10 @@ function unauthorizedHtml(wrongToken = false): string {
 
 function misconfiguredHtml(): string {
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>CLR</title>
+<html lang="pt-BR"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>CLR</title>
 <style>body{background:#000;color:#e8e8e8;font-family:system-ui;display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;text-align:center}code{color:#999}</style>
-</head><body><div><h1 style="font-size:16px;margin-bottom:8px">AUTH_TOKEN required</h1>
-<p style="color:#999;font-size:13px;line-height:1.5">Start the app with <code>clr</code> so authentication is configured.</p></div></body></html>`;
+</head><body><div><h1 style="font-size:16px;margin-bottom:8px">AUTH_TOKEN necessário</h1>
+<p style="color:#999;font-size:13px;line-height:1.5">Inicie o app com <code>clr</code> para configurar a autenticação.</p></div></body></html>`;
 }
 
 function tokensEqual(a: string, b: string): boolean {
@@ -148,7 +148,7 @@ export function middleware(req: NextRequest) {
   const token = process.env.AUTH_TOKEN;
   if (!token) {
     if (req.nextUrl.pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "AUTH_TOKEN not configured" }, { status: 503 });
+      return NextResponse.json({ error: "AUTH_TOKEN não configurado" }, { status: 503 });
     }
     return new NextResponse(misconfiguredHtml(), {
       status: 503,
@@ -187,7 +187,7 @@ export function middleware(req: NextRequest) {
   }
 
   if (req.nextUrl.pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   return new NextResponse(unauthorizedHtml(false), {

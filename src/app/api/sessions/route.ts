@@ -1,4 +1,4 @@
-import { listSessions, deleteSession, archiveSession, unarchiveSession, archiveAllSessions, getArchivedSessionIds } from "@/lib/session-store";
+import { listSessions, deleteSession, archiveSession, unarchiveSession, archiveAllSessions, getArchivedSessionIds, getDeletedSessionIds } from "@/lib/session-store";
 import { readCursorSessions } from "@/lib/transcript-reader";
 import { getWorkspace } from "@/lib/workspace";
 import { deleteSessionSchema, parseBody } from "@/lib/validation";
@@ -39,8 +39,10 @@ export async function GET(req: Request) {
 
   vlog("sessions", "GET", { all, archived, workspace });
 
+  const deletedIds = await getDeletedSessionIds();
+
   if (all) {
-    const ours = await listSessions(undefined, archived);
+    const ours = (await listSessions(undefined, archived)).filter((s) => !deletedIds.has(s.id));
     vlog("sessions", "all mode", { count: ours.length, ms: Date.now() - t0 });
     return Response.json({ sessions: ours, workspace });
   }
@@ -51,28 +53,54 @@ export async function GET(req: Request) {
 
   if (archived) {
     const archivedIds = await getArchivedSessionIds();
-    const archivedCursorSessions = cursorSessions.filter((s) => archivedIds.has(s.id));
-    const merged = mergeSessions(ourSessions, archivedCursorSessions);
+    const archivedCursorSessions = cursorSessions.filter(
+      (s) => archivedIds.has(s.id) && !deletedIds.has(s.id),
+    );
+    const merged = mergeSessions(ourSessions, archivedCursorSessions).filter(
+      (s) => !deletedIds.has(s.id),
+    );
     vlog("sessions", "archived result", { merged: merged.length, ms: Date.now() - t0 });
     return Response.json({ sessions: merged, workspace });
   }
 
   const archivedIds = await getArchivedSessionIds();
-  const activeCursorSessions = cursorSessions.filter((s) => !archivedIds.has(s.id));
-  const merged = mergeSessions(ourSessions, activeCursorSessions);
-  vlog("sessions", "result", { merged: merged.length, archivedIds: archivedIds.size, ms: Date.now() - t0 });
+  const activeCursorSessions = cursorSessions.filter(
+    (s) => !archivedIds.has(s.id) && !deletedIds.has(s.id),
+  );
+  const merged = mergeSessions(ourSessions, activeCursorSessions).filter(
+    (s) => !deletedIds.has(s.id),
+  );
+  vlog("sessions", "result", {
+    merged: merged.length,
+    archivedIds: archivedIds.size,
+    deletedIds: deletedIds.size,
+    ms: Date.now() - t0,
+  });
 
   return Response.json({ sessions: merged, workspace });
 }
 
 export async function DELETE(req: Request) {
-  const raw = await parseJsonBody<{ sessionId?: string }>(req);
+  const raw = await parseJsonBody<{ sessionId?: string; workspace?: string }>(req);
   if (raw instanceof Response) return raw;
 
   const parsed = parseBody(deleteSessionSchema, raw);
   if ("error" in parsed) return badRequest(parsed.error);
 
-  await deleteSession(parsed.data.sessionId);
+  const sessionId = parsed.data.sessionId;
+  const workspace = typeof raw.workspace === "string" ? raw.workspace : getWorkspace();
+
+  // Prefer metadata from Cursor transcripts so tombstones work for sessions
+  // that were never stored in our SQLite DB.
+  let meta: StoredSession | undefined;
+  try {
+    const cursorSessions = await readCursorSessions(workspace);
+    meta = cursorSessions.find((s) => s.id === sessionId);
+  } catch {
+    // fall through with minimal tombstone
+  }
+
+  await deleteSession(sessionId, meta ?? { id: sessionId, title: "Deleted", workspace, preview: "", createdAt: Date.now(), updatedAt: Date.now() });
   return Response.json({ ok: true });
 }
 

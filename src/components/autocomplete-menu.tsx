@@ -40,7 +40,7 @@ export function AutocompleteMenu({
     >
       <div className="sticky top-0 z-10 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-text-muted bg-bg-elevated border-b border-border">
         {title}
-        {loading ? " · loading…" : items.length === 0 ? " · no matches" : ""}
+        {loading ? " · carregando…" : items.length === 0 ? " · sem resultados" : ""}
       </div>
       {items.map((item, i) => (
         <button

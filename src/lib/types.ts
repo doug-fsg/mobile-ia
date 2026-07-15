@@ -3,6 +3,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  /** Skill names attached when sending (UI chips; expanded server-side for the agent). */
+  skills?: string[];
 }
 
 export interface TodoItem {
@@ -53,6 +55,8 @@ export interface ChatRequest {
   workspace?: string;
   /** Start new sessions in an isolated git worktree (ignored when resuming). */
   worktree?: boolean;
+  /** Skill names to expand into the agent prompt. */
+  skills?: string[];
 }
 
 export interface NetworkInfo {
@@ -69,6 +73,7 @@ export interface QueuedMessage {
   timestamp: number;
   model?: string;
   mode?: AgentMode;
+  skills?: string[];
 }
 
 export interface ModelInfo {

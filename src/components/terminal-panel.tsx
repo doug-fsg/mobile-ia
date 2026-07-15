@@ -343,13 +343,13 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
               onClick={handleNewShell}
               disabled={spawning}
               className="p-1.5 rounded-md transition-colors text-text-muted hover:text-text-secondary hover:bg-bg-hover disabled:opacity-40"
-              aria-label="New terminal"
+              aria-label="Novo Terminal"
             >
               {spawning ? <Spinner className="w-3.5 h-3.5" /> : <PlusIcon size={13} />}
             </button>
             <button
               onClick={onClose}
-              aria-label="Close"
+              aria-label="Fechar"
               className="p-1.5 rounded-md hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
             >
               <CloseIcon size={13} />
@@ -396,7 +396,7 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] text-text-muted hover:text-text-secondary bg-bg-surface hover:bg-bg-hover transition-colors disabled:opacity-40"
               >
                 {spawning ? <Spinner className="w-3.5 h-3.5" /> : <PlusIcon size={13} />}
-                New terminal
+                Novo Terminal
               </button>
             </div>
           )}
@@ -421,14 +421,14 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
             {!isRunning && (
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
                 <span className="text-[11px] text-text-muted">
-                  exited{current.exitCode !== 0 && current.exitCode !== null ? ` (${current.exitCode})` : ""}
+                  encerrado{current.exitCode !== 0 && current.exitCode !== null ? ` (${current.exitCode})` : ""}
                 </span>
                 <button
                   onClick={() => handleRemove(current.id)}
                   className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors"
                 >
                   <TrashIcon size={10} />
-                  Remove
+                  Remover
                 </button>
               </div>
             )}
@@ -443,7 +443,7 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a command..."
+                  placeholder="Digite um comando..."
                   className="flex-1 min-w-0 bg-transparent text-[13px] font-mono text-text placeholder:text-text-muted/50 focus:outline-none"
                   autoFocus
                 />
@@ -458,7 +458,7 @@ export function TerminalPanel({ open, onClose, workspace, onCountChange }: Termi
                   type="button"
                   onClick={() => handleKill(current.id)}
                   className="shrink-0 p-1.5 rounded-md text-error/50 hover:text-error hover:bg-error/10 transition-colors"
-                  aria-label="Kill process"
+                  aria-label="Encerrar processo"
                 >
                   <StopIcon size={12} />
                 </button>

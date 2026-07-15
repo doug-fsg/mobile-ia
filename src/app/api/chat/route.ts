@@ -8,6 +8,7 @@ import { chatRequestSchema, parseBody } from "@/lib/validation";
 import { badRequest, serverError, safeErrorMessage, parseJsonBody } from "@/lib/errors";
 import { AGENT_INIT_TIMEOUT_MS } from "@/lib/constants";
 import { notifyAgentComplete } from "@/lib/webhooks";
+import { buildSkillPromptPrefix, listSkills } from "@/lib/skills";
 import type { ChatRequest } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -115,8 +116,20 @@ export async function POST(req: Request) {
   try {
     const requestId = randomUUID();
 
+    // Expand skills server-side so the chat UI stays clean (chips only).
+    let agentPrompt = body.prompt;
+    if (body.skills && body.skills.length > 0) {
+      const all = listSkills(workspace);
+      const resolved = body.skills
+        .map((name) => all.find((s) => s.name === name))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map((s) => ({ name: s.name, path: s.path }));
+      const prefix = buildSkillPromptPrefix(resolved);
+      if (prefix) agentPrompt = prefix + body.prompt;
+    }
+
     const child = await spawnAgent({
-      prompt: body.prompt,
+      prompt: agentPrompt,
       sessionId: body.sessionId,
       workspace,
       model: body.model,
@@ -138,10 +151,11 @@ export async function POST(req: Request) {
 
     if (verbose) {
       console.warn(
-        `[chat] spawning agent in ${workspace} (model=${body.model ?? "default"}, mode=${body.mode ?? "agent"}, worktree=${body.worktree && !body.sessionId ? "yes" : "no"})`,
+        `[chat] spawning agent in ${workspace} (model=${body.model ?? "default"}, mode=${body.mode ?? "agent"}, worktree=${body.worktree && !body.sessionId ? "yes" : "no"}, skills=${body.skills?.length ?? 0})`,
       );
     }
 
+    // Title/preview from the clean user prompt, never the skill dump.
     const sessionId = await waitForSessionId(
       child,
       workspace,

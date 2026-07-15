@@ -26,7 +26,7 @@ export function PwaInstall() {
     <pwa-install
       manifest-url="/manifest.webmanifest"
       name="Cursor Local Remote"
-      description="Control Cursor IDE from any device on your local network"
+      description="Controle o Cursor IDE a partir de qualquer dispositivo na sua rede local"
       icon="/apple-touch-icon.png"
     />
   );

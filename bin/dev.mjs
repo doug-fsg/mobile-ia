@@ -51,11 +51,11 @@ async function findPort(start) {
 
 const port = await findPort(startPort);
 if (!port) {
-  console.error(`No available port found starting from ${startPort}`);
+  console.error(`Nenhuma porta disponível a partir de ${startPort}`);
   process.exit(1);
 }
 if (port !== startPort) {
-  console.log(`Port ${startPort} in use, using ${port}`);
+  console.log(`Porta ${startPort} em uso, usando ${port}`);
 }
 
 const authToken = process.env.AUTH_TOKEN || "123";
@@ -90,7 +90,7 @@ if (networkUrl) {
 console.log(`  \x1b[2mToken:\x1b[0m   ${authToken}\n`);
 
 if (networkUrl) {
-  console.log("  \x1b[2mScan to connect from your phone:\x1b[0m\n");
+  console.log("  \x1b[2mEscaneie para conectar pelo celular:\x1b[0m\n");
   qrcode.generate(authUrl, { small: true }, (code) => {
     console.log(code.split("\n").map((l) => "    " + l).join("\n") + "\n");
   });

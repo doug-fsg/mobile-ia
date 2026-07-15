@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { uuid } from "@/lib/uuid";
 import { STREAMING_HEALTH_CHECK_MS } from "@/lib/constants";
 import { vlog } from "@/lib/verbose";
+import { parseUserMessageContent } from "@/lib/message-display";
 import { useSessionWatch } from "./use-session-watch";
 import { useMessageQueue } from "./use-message-queue";
 
@@ -23,7 +24,10 @@ interface UseChatReturn {
   worktree: boolean;
   error: string | null;
   queuedMessages: ReturnType<typeof useMessageQueue>["queuedMessages"];
-  sendMessage: (prompt: string, overrides?: { model?: string; mode?: AgentMode }) => Promise<void>;
+  sendMessage: (
+    prompt: string,
+    overrides?: { model?: string; mode?: AgentMode; skills?: string[] },
+  ) => Promise<void>;
   loadSession: (id: string, workspace?: string) => Promise<void>;
   setSessionId: (id: string | null) => void;
   setSelectedModel: (model: string) => void;
@@ -65,7 +69,11 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
   const isStreamingRef = useRef(false);
   const worktreeRef = useRef(false);
   const sendMessageRef = useRef<
-    ((prompt: string, overrides?: { model?: string; mode?: AgentMode }) => Promise<void>) | undefined
+    | ((
+        prompt: string,
+        overrides?: { model?: string; mode?: AgentMode; skills?: string[] },
+      ) => Promise<void>)
+    | undefined
   >(undefined);
 
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
@@ -78,7 +86,11 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
     const queue = queueHook;
     const next = queue.dequeueNext();
     if (next) {
-      const overrides = next.model || next.mode ? { model: next.model, mode: next.mode } : undefined;
+      const overrides = {
+        model: next.model,
+        mode: next.mode,
+        skills: next.skills,
+      };
       setTimeout(() => { sendMessageRef.current?.(next.content, overrides); }, 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,7 +155,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
           setIsStreaming(true);
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to load session";
+        const msg = err instanceof Error ? err.message : "Falha ao carregar sessão";
         vlog("chat", "loadSession: error", { id, error: msg, ms: Date.now() - t0 });
         setError(msg);
       } finally {
@@ -155,9 +167,9 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
   );
 
   const sendMessage = useCallback(
-    async (prompt: string, overrides?: { model?: string; mode?: AgentMode }) => {
+    async (prompt: string, overrides?: { model?: string; mode?: AgentMode; skills?: string[] }) => {
       if (isStreamingRef.current) {
-        queueHook.enqueue(prompt);
+        queueHook.enqueue(prompt, { skills: overrides?.skills });
         return;
       }
 
@@ -165,11 +177,13 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
       setError(null);
       setIsStreaming(true);
 
+      const skills = overrides?.skills?.length ? overrides.skills : undefined;
       const userMessage: ChatMessage = {
         id: uuid(),
         role: "user",
         content: prompt,
         timestamp: Date.now(),
+        skills,
       };
       watch.setMessages((prev) => [...prev, userMessage]);
 
@@ -187,6 +201,7 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
             mode: effectiveMode !== "agent" ? effectiveMode : undefined,
             workspace: workspaceRef.current,
             worktree: !sessionIdRef.current && worktreeRef.current ? true : undefined,
+            skills,
           }),
         });
 
@@ -240,7 +255,11 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
     const msg = queueHook.forceSendQueued(id);
     if (!msg) return;
     setIsStreaming(false);
-    const overrides = msg.model || msg.mode ? { model: msg.model, mode: msg.mode } : undefined;
+    const overrides = {
+      model: msg.model,
+      mode: msg.mode,
+      skills: msg.skills,
+    };
     setTimeout(() => { sendMessageRef.current?.(msg.content, overrides); }, 0);
   }, [queueHook]);
 
@@ -265,13 +284,24 @@ export function useChat(initialModel = "auto", initialWorkspace?: string): UseCh
     const msgs = watch.messages;
     const lastUserMsg = [...msgs].reverse().find((m) => m.role === "user");
     if (!lastUserMsg) return;
-    const prompt = lastUserMsg.content;
+
+    const parsed = parseUserMessageContent(lastUserMsg.content);
+    const prompt = parsed.text || lastUserMsg.content;
+    const skills =
+      lastUserMsg.skills?.length
+        ? lastUserMsg.skills
+        : parsed.skills.length
+          ? parsed.skills
+          : undefined;
+
     const idx = msgs.findIndex((m) => m.id === lastUserMsg.id);
     if (idx >= 0) {
       watch.setMessages(msgs.slice(0, idx));
     }
     watch.setToolCalls((prev) => prev.filter((tc) => tc.timestamp < lastUserMsg.timestamp));
-    void sendMessage(prompt).catch((err) => console.error("[chat] Retry failed:", err));
+    void sendMessage(prompt, skills?.length ? { skills } : undefined).catch((err) =>
+      console.error("[chat] Retry failed:", err),
+    );
   }, [watch, sendMessage]);
 
   return {
