@@ -36,15 +36,39 @@ function cleanEnv(): NodeJS.ProcessEnv {
   return base;
 }
 
+function resolveShell(): { command: string; args: string[] } {
+  if (process.env.CLR_SHELL) {
+    return {
+      command: process.env.CLR_SHELL,
+      args: process.platform === "win32" ? [] : ["-i"],
+    };
+  }
+
+  if (process.platform === "win32") {
+    // PowerShell is always present on modern Windows; /bin/sh is not.
+    return {
+      command: "powershell.exe",
+      args: ["-NoLogo", "-NoProfile"],
+    };
+  }
+
+  return {
+    command: process.env.SHELL || "/bin/bash",
+    args: ["-i"],
+  };
+}
+
 export function spawnTerminal(cwd: string): TerminalProcess {
   const id = randomUUID().slice(0, 8);
-  const shell = process.env.SHELL || "/bin/sh";
+  const { command, args } = resolveShell();
 
-  const child = spawn(shell, ["-i"], {
+  const child = spawn(command, args, {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
     env: cleanEnv(),
-    detached: true,
+    // Negative-PID process groups only work on Unix.
+    detached: process.platform !== "win32",
+    windowsHide: true,
   });
 
   const entry: TerminalProcess = {
