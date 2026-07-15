@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync, existsSync } from "fs";
-import { join, basename, dirname } from "path";
+import { readdirSync, readFileSync, existsSync } from "fs";
+import { join, basename } from "path";
 import { homedir } from "os";
 
 export interface SkillInfo {

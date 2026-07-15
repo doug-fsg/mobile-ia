@@ -173,8 +173,9 @@ export function ChatInput({
       haptics.select();
 
       if (item.kind === "skill" && item.path) {
+        const skillPath = item.path;
         setAttachedSkills((prev) =>
-          prev.some((s) => s.name === item.label) ? prev : [...prev, { name: item.label, path: item.path! }],
+          prev.some((s) => s.name === item.label) ? prev : [...prev, { name: item.label, path: skillPath }],
         );
       }
 
