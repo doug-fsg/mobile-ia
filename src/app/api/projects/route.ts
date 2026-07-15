@@ -21,11 +21,11 @@ export async function GET() {
     }
     for (const ws of dbWorkspaces) {
       if (byPath.has(ws)) continue;
-      const name = ws.split(sep).pop() || ws;
+      const name = ws.split(/[/\\]/).pop() || ws;
       byPath.set(ws, { name, path: ws, key: ws });
     }
     if (!byPath.has(currentWorkspace)) {
-      const name = currentWorkspace.split(sep).pop() || currentWorkspace;
+      const name = currentWorkspace.split(/[/\\]/).pop() || currentWorkspace;
       byPath.set(currentWorkspace, { name, path: currentWorkspace, key: currentWorkspace });
     }
 

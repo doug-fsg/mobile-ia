@@ -14,6 +14,7 @@ const CURSOR_PROJECTS_DIR = join(homedir(), ".cursor", "projects");
  * Cursor stores project folders under ~/.cursor/projects using a slug of the
  * absolute workspace path: separators and spaces become '-', ':' is dropped.
  * Casing varies (C-Users-... vs c-cursor-...), so callers should try both.
+ * WSL remote workspaces use keys like wsl-Ubuntu-20-04-home-user-app → \\wsl$\Ubuntu-20.04\...
  */
 export function workspaceToProjectKey(workspace: string): string {
   return slugifyWorkspace(workspace);
@@ -29,10 +30,29 @@ function slugifyWorkspace(workspace: string, lowercase = true): string {
   return lowercase ? slug.toLowerCase() : slug;
 }
 
+/** Cursor WSL key from a Windows UNC path, e.g. \\wsl$\Ubuntu-20.04\home\a → wsl-Ubuntu-20-04-home-a */
+function uncWslToCursorKey(workspace: string): string | null {
+  const normalized = workspace.replace(/\//g, "\\");
+  const m = normalized.match(/^\\\\wsl\$\\([^\\]+)(?:\\(.*))?$/i);
+  if (!m) return null;
+  const distro = m[1].replace(/\./g, "-");
+  const rest = (m[2] || "").replace(/\\+/g, "-").replace(/\s+/g, "-");
+  return (rest ? `wsl-${distro}-${rest}` : `wsl-${distro}`);
+}
+
 function workspaceKeyCandidates(workspace: string): string[] {
   const preserved = slugifyWorkspace(workspace, false);
   const lower = preserved.toLowerCase();
-  return [...new Set([lower, preserved])];
+  const keys = new Set<string>([lower, preserved]);
+
+  for (const candidate of [workspace, resolve(workspace)]) {
+    const cursorWsl = uncWslToCursorKey(candidate);
+    if (cursorWsl) {
+      keys.add(cursorWsl);
+      keys.add(cursorWsl.toLowerCase());
+    }
+  }
+  return [...keys];
 }
 
 function isDir(path: string): boolean {
@@ -43,26 +63,22 @@ function isDir(path: string): boolean {
   }
 }
 
-function projectKeyToWorkspace(key: string): string | null {
-  const parts = key.split("-");
-  if (parts.length === 0 || !parts[0]) return null;
+function distroNameCandidates(parts: string[]): string[] {
+  const joined = parts.join("-");
+  const out = new Set<string>([joined]);
+  // Cursor slugifies Ubuntu-20.04 → Ubuntu-20-04; restore dots between digit groups.
+  out.add(joined.replace(/(\d+)-(\d+)/g, "$1.$2"));
+  return [...out];
+}
 
-  let path: string;
-  let i: number;
-
-  // Windows drive keys: C-Users-Dougl / c-cursor-remoto-...
-  if (/^[A-Za-z]$/.test(parts[0])) {
-    path = `${parts[0].toUpperCase()}:`;
-    i = 1;
-  } else {
-    path = sep + parts[0];
-    i = 1;
-  }
+/** Greedy reconstruction of a path from slug parts against the real filesystem. */
+function walkPathParts(start: string, parts: string[]): string | null {
+  let path = start;
+  let i = 0;
 
   while (i < parts.length) {
     let matched = false;
 
-    // Prefer shorter directory names (same as Cursor's greedy join).
     for (let j = i; j < parts.length; j++) {
       const slice = parts.slice(i, j + 1);
       const names = [...new Set([slice.join("-"), slice.join(" ")])];
@@ -83,6 +99,45 @@ function projectKeyToWorkspace(key: string): string | null {
   }
 
   return existsSync(path) ? path : null;
+}
+
+/** wsl-Ubuntu-20-04-home-user-app → \\wsl$\Ubuntu-20.04\home\user\app */
+function resolveWslProjectKey(partsAfterWsl: string[]): string | null {
+  for (let j = 0; j < partsAfterWsl.length; j++) {
+    for (const distro of distroNameCandidates(partsAfterWsl.slice(0, j + 1))) {
+      const root = `\\\\wsl$\\${distro}`;
+      if (!isDir(root)) continue;
+      const remaining = partsAfterWsl.slice(j + 1);
+      if (remaining.length === 0) return root;
+      const full = walkPathParts(root, remaining);
+      if (full) return full;
+    }
+  }
+  return null;
+}
+
+function projectKeyToWorkspace(key: string): string | null {
+  const parts = key.split("-");
+  if (parts.length === 0 || !parts[0]) return null;
+
+  if (parts[0].toLowerCase() === "wsl" && parts.length >= 2) {
+    const wslPath = resolveWslProjectKey(parts.slice(1));
+    if (wslPath) return wslPath;
+  }
+
+  let path: string;
+  let i: number;
+
+  // Windows drive keys: C-Users-Dougl / c-cursor-remoto-...
+  if (/^[A-Za-z]$/.test(parts[0])) {
+    path = `${parts[0].toUpperCase()}:`;
+    i = 1;
+  } else {
+    path = sep + parts[0];
+    i = 1;
+  }
+
+  return walkPathParts(path, parts.slice(i));
 }
 
 function isPathInside(parent: string, child: string): boolean {
@@ -108,7 +163,7 @@ export async function listProjects(): Promise<ProjectInfo[]> {
       }
       const workspace = projectKeyToWorkspace(entry);
       if (!workspace) continue;
-      const name = workspace.split(sep).pop() || workspace;
+      const name = workspace.split(/[/\\]/).pop() || workspace;
       projects.push({ name, path: workspace, key: entry });
     }
   } catch {

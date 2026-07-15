@@ -74,9 +74,67 @@ function probeClr(port) {
   });
 }
 
+function isDir(path) {
+  try {
+    return existsSync(path) && statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function distroNameCandidates(parts) {
+  const joined = parts.join("-");
+  const out = new Set([joined]);
+  out.add(joined.replace(/(\d+)-(\d+)/g, "$1.$2"));
+  return [...out];
+}
+
+function walkPathParts(start, parts) {
+  let path = start;
+  let i = 0;
+  while (i < parts.length) {
+    let matched = false;
+    for (let j = i; j < parts.length; j++) {
+      const slice = parts.slice(i, j + 1);
+      const names = [...new Set([slice.join("-"), slice.join(" ")])];
+      for (const name of names) {
+        const candidate = path.endsWith(":") ? path + sep + name : join(path, name);
+        if (isDir(candidate)) {
+          path = candidate;
+          i = j + 1;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+    if (!matched) return null;
+  }
+  return existsSync(path) ? path : null;
+}
+
+function resolveWslProjectKey(partsAfterWsl) {
+  for (let j = 0; j < partsAfterWsl.length; j++) {
+    for (const distro of distroNameCandidates(partsAfterWsl.slice(0, j + 1))) {
+      const root = "\\\\wsl$\\" + distro;
+      if (!isDir(root)) continue;
+      const remaining = partsAfterWsl.slice(j + 1);
+      if (remaining.length === 0) return root;
+      const full = walkPathParts(root, remaining);
+      if (full) return full;
+    }
+  }
+  return null;
+}
+
 function projectKeyToWorkspace(key) {
   const parts = key.split("-");
   if (parts.length === 0 || !parts[0]) return null;
+
+  if (parts[0].toLowerCase() === "wsl" && parts.length >= 2) {
+    const wslPath = resolveWslProjectKey(parts.slice(1));
+    if (wslPath) return wslPath;
+  }
 
   let path;
   let i;
@@ -89,25 +147,7 @@ function projectKeyToWorkspace(key) {
     i = 1;
   }
 
-  while (i < parts.length) {
-    let matched = false;
-    for (let j = i; j < parts.length; j++) {
-      const slice = parts.slice(i, j + 1);
-      const names = [...new Set([slice.join("-"), slice.join(" ")])];
-      for (const name of names) {
-        const candidate = path.endsWith(":") ? path + sep + name : join(path, name);
-        if (existsSync(candidate) && statSync(candidate).isDirectory()) {
-          path = candidate;
-          i = j + 1;
-          matched = true;
-          break;
-        }
-      }
-      if (matched) break;
-    }
-    if (!matched) return null;
-  }
-  return existsSync(path) ? path : null;
+  return walkPathParts(path, parts.slice(i));
 }
 
 function discoverProjects() {
@@ -122,7 +162,7 @@ function discoverProjects() {
       if (!existsSync(transcripts)) continue;
       const ws = projectKeyToWorkspace(entry);
       if (!ws) continue;
-      const name = ws.split(sep).pop() || ws;
+      const name = ws.split(/[/\\]/).pop() || ws;
       projects.push({ name, path: ws });
     }
   } catch {
