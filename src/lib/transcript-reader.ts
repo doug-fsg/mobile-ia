@@ -1,5 +1,5 @@
 import { readdir, stat, readFile, access } from "fs/promises";
-import { join, resolve, sep } from "path";
+import { join, resolve, sep, relative, isAbsolute } from "path";
 import { homedir } from "os";
 import { existsSync, statSync } from "fs";
 import type { StoredSession, ChatMessage, ToolCallInfo, TodoItem, ProjectInfo } from "@/lib/types";
@@ -8,24 +8,84 @@ import { vlog } from "@/lib/verbose";
 
 const CURSOR_PROJECTS_DIR = join(homedir(), ".cursor", "projects");
 
+/**
+ * Cursor stores project folders under ~/.cursor/projects using a slug of the
+ * absolute workspace path: separators and spaces become '-', ':' is dropped.
+ * Casing varies (C-Users-... vs c-cursor-...), so callers should try both.
+ */
 export function workspaceToProjectKey(workspace: string): string {
+  return slugifyWorkspace(workspace);
+}
+
+function slugifyWorkspace(workspace: string, lowercase = true): string {
   const abs = resolve(workspace);
-  return abs.replace(/^\//, "").replace(/\//g, "-");
+  const slug = abs
+    .replace(/^[\\/]+/, "")
+    .replace(/[\\/]+/g, "-")
+    .replace(/:/g, "")
+    .replace(/\s+/g, "-");
+  return lowercase ? slug.toLowerCase() : slug;
+}
+
+function workspaceKeyCandidates(workspace: string): string[] {
+  const preserved = slugifyWorkspace(workspace, false);
+  const lower = preserved.toLowerCase();
+  return [...new Set([lower, preserved])];
+}
+
+function isDir(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function projectKeyToWorkspace(key: string): string | null {
   const parts = key.split("-");
-  let path = sep + parts[0];
-  for (let i = 1; i < parts.length; i++) {
-    const withSlash = path + sep + parts[i];
-    if (existsSync(withSlash) && statSync(withSlash).isDirectory()) {
-      path = withSlash;
-    } else {
-      path = path + "-" + parts[i];
-    }
+  if (parts.length === 0 || !parts[0]) return null;
+
+  let path: string;
+  let i: number;
+
+  // Windows drive keys: C-Users-Dougl / c-cursor-remoto-...
+  if (/^[A-Za-z]$/.test(parts[0])) {
+    path = `${parts[0].toUpperCase()}:`;
+    i = 1;
+  } else {
+    path = sep + parts[0];
+    i = 1;
   }
-  if (!existsSync(path)) return null;
-  return path;
+
+  while (i < parts.length) {
+    let matched = false;
+
+    // Prefer shorter directory names (same as Cursor's greedy join).
+    for (let j = i; j < parts.length; j++) {
+      const slice = parts.slice(i, j + 1);
+      const names = [...new Set([slice.join("-"), slice.join(" ")])];
+
+      for (const name of names) {
+        const candidate = path.endsWith(":") ? `${path}${sep}${name}` : join(path, name);
+        if (isDir(candidate)) {
+          path = candidate;
+          i = j + 1;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
+    }
+
+    if (!matched) return null;
+  }
+
+  return existsSync(path) ? path : null;
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const rel = relative(resolve(parent), resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 export async function listProjects(): Promise<ProjectInfo[]> {
@@ -33,7 +93,11 @@ export async function listProjects(): Promise<ProjectInfo[]> {
   try {
     const entries = await readdir(CURSOR_PROJECTS_DIR);
     for (const entry of entries) {
-      if (!/^[A-Z]/.test(entry)) continue;
+      // Drive-letter projects (C-Users-..., c-cursor-...) and numeric/cloud ids skipped
+      if (!/^[A-Za-z]/.test(entry)) continue;
+      // Skip pure numeric / uuid-like dirs
+      if (/^\d+$/.test(entry)) continue;
+
       const transcriptsDir = join(CURSOR_PROJECTS_DIR, entry, "agent-transcripts");
       try {
         await access(transcriptsDir);
@@ -52,16 +116,21 @@ export async function listProjects(): Promise<ProjectInfo[]> {
 }
 
 async function findTranscriptsDir(workspace: string): Promise<string | null> {
-  const key = workspaceToProjectKey(workspace);
-  const dir = join(CURSOR_PROJECTS_DIR, key, "agent-transcripts");
-  try {
-    await access(dir);
-    vlog("reader", "transcripts dir found", dir);
-    return dir;
-  } catch {
-    vlog("reader", "transcripts dir not found", dir, "workspace", workspace, "key", key);
-    return null;
+  for (const key of workspaceKeyCandidates(workspace)) {
+    const dir = join(CURSOR_PROJECTS_DIR, key, "agent-transcripts");
+    try {
+      await access(dir);
+      vlog("reader", "transcripts dir found", dir);
+      return dir;
+    } catch {
+      // try next candidate
+    }
   }
+  vlog("reader", "transcripts dir not found", {
+    workspace,
+    tried: workspaceKeyCandidates(workspace),
+  });
+  return null;
 }
 
 async function parseJsonlEntries(jsonlPath: string): Promise<Record<string, unknown>[]> {
@@ -187,7 +256,7 @@ export async function resolveJsonlPath(workspace: string, sessionId: string): Pr
 
   const resolvedDir = resolve(dir);
   const entryPath = resolve(dir, sessionId);
-  if (!entryPath.startsWith(resolvedDir + "/")) {
+  if (!isPathInside(resolvedDir, entryPath)) {
     vlog("reader", "resolveJsonlPath: path traversal blocked", { entryPath, resolvedDir });
     return null;
   }

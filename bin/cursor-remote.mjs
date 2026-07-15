@@ -13,6 +13,14 @@ import qrcode from "qrcode-terminal";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
 
+// Make Cursor agent CLI findable even if the terminal PATH is stale (common on Windows).
+if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+  const agentDir = resolve(process.env.LOCALAPPDATA, "cursor-agent");
+  if (!process.env.PATH?.toLowerCase().includes(agentDir.toLowerCase())) {
+    process.env.PATH = `${agentDir};${process.env.PATH || ""}`;
+  }
+}
+
 const WORDS = [
   "alpha","amber","anvil","apple","arrow","atlas","azure","badge","baker","beach",
   "berry","blade","blaze","bloom","board","bonus","brave","brick","brook","brush",
@@ -68,14 +76,36 @@ function probeClr(port) {
 
 function projectKeyToWorkspace(key) {
   const parts = key.split("-");
-  let path = sep + parts[0];
-  for (let i = 1; i < parts.length; i++) {
-    const withSlash = path + sep + parts[i];
-    if (existsSync(withSlash) && statSync(withSlash).isDirectory()) {
-      path = withSlash;
-    } else {
-      path = path + "-" + parts[i];
+  if (parts.length === 0 || !parts[0]) return null;
+
+  let path;
+  let i;
+
+  if (/^[A-Za-z]$/.test(parts[0])) {
+    path = parts[0].toUpperCase() + ":";
+    i = 1;
+  } else {
+    path = sep + parts[0];
+    i = 1;
+  }
+
+  while (i < parts.length) {
+    let matched = false;
+    for (let j = i; j < parts.length; j++) {
+      const slice = parts.slice(i, j + 1);
+      const names = [...new Set([slice.join("-"), slice.join(" ")])];
+      for (const name of names) {
+        const candidate = path.endsWith(":") ? path + sep + name : join(path, name);
+        if (existsSync(candidate) && statSync(candidate).isDirectory()) {
+          path = candidate;
+          i = j + 1;
+          matched = true;
+          break;
+        }
+      }
+      if (matched) break;
     }
+    if (!matched) return null;
   }
   return existsSync(path) ? path : null;
 }
@@ -86,7 +116,8 @@ function discoverProjects() {
   try {
     const entries = readdirSync(cursorDir);
     for (const entry of entries) {
-      if (!/^[A-Z]/.test(entry)) continue;
+      if (!/^[A-Za-z]/.test(entry)) continue;
+      if (/^\d+$/.test(entry)) continue;
       const transcripts = join(cursorDir, entry, "agent-transcripts");
       if (!existsSync(transcripts)) continue;
       const ws = projectKeyToWorkspace(entry);
@@ -146,9 +177,11 @@ if (args.includes("--list") || args.includes("-l")) {
 }
 
 if (args.includes("--update") || args.includes("-u")) {
-  console.log("  Updating cursor-local-remote...\n");
+  const pkg = JSON.parse(readFileSync(resolve(projectRoot, "package.json"), "utf8"));
+  const updateSpec = pkg.clrUpdate || "cursor-local-remote@latest";
+  console.log(`  Updating ${updateSpec}...\n`);
   try {
-    execFileSync("npm", ["install", "-g", "cursor-local-remote@latest"], { stdio: "inherit" });
+    execFileSync("npm", ["install", "-g", updateSpec], { stdio: "inherit", shell: true });
     console.log("\n  \x1b[32m✓ Updated successfully\x1b[0m");
   } catch {
     console.error("\n  \x1b[31m✗ Update failed\x1b[0m");
@@ -339,16 +372,16 @@ function openBrowser() {
   }
 }
 
-const nextBin = resolve(projectRoot, "node_modules", ".bin", "next");
+// Spawn Next via node + CLI entry (avoids Windows shell breaking on spaces in path)
+const nextCli = resolve(projectRoot, "node_modules", "next", "dist", "bin", "next");
 const isBuilt = existsSync(resolve(projectRoot, ".next", "BUILD_ID"));
 
 const nextArgs = isBuilt
-  ? ["start", "--hostname", hostname, "--port", port]
-  : ["dev", "--hostname", hostname, "--port", port];
+  ? [nextCli, "start", "--hostname", hostname, "--port", port]
+  : [nextCli, "dev", "--hostname", hostname, "--port", port];
 
-const child = spawn(nextBin, nextArgs, {
+const child = spawn(process.execPath, nextArgs, {
   cwd: projectRoot,
-  shell: true,
   stdio: ["inherit", "pipe", "pipe"],
   env: {
     ...process.env,

@@ -60,11 +60,20 @@ if (port !== startPort) {
 
 const authToken = process.env.AUTH_TOKEN || generateToken();
 
+// Make Cursor agent CLI findable even if the terminal PATH is stale (common on Windows).
+if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+  const agentDir = resolve(process.env.LOCALAPPDATA, "cursor-agent");
+  if (!process.env.PATH?.includes(agentDir)) {
+    process.env.PATH = `${agentDir};${process.env.PATH || ""}`;
+  }
+}
+
 const isStart = process.argv.includes("--start");
-const nextBin = resolve(projectRoot, "node_modules", ".bin", "next");
+// Spawn Next via node + CLI entry (avoids Windows shell breaking on spaces in path)
+const nextCli = resolve(projectRoot, "node_modules", "next", "dist", "bin", "next");
 const args = isStart
-  ? ["start", "--hostname", "0.0.0.0", "--port", String(port)]
-  : ["dev", "--hostname", "0.0.0.0", "--port", String(port)];
+  ? [nextCli, "start", "--hostname", "0.0.0.0", "--port", String(port)]
+  : [nextCli, "dev", "--hostname", "0.0.0.0", "--port", String(port)];
 
 const lanIp = Object.values(networkInterfaces())
   .flat()
@@ -87,9 +96,8 @@ if (networkUrl) {
   });
 }
 
-const child = spawn(nextBin, args, {
+const child = spawn(process.execPath, args, {
   cwd: projectRoot,
-  shell: true,
   stdio: "inherit",
   env: { ...process.env, PORT: String(port), AUTH_TOKEN: authToken },
 });

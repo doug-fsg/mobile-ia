@@ -19,8 +19,20 @@ The remote UI can see **all** sessions, both ones started in the IDE and ones st
 
 ## Install
 
+This is a **fork** of [jon-makinen/cursor-local-remote](https://github.com/jon-makinen/cursor-local-remote) with Windows fixes (paths with spaces, Cursor `agent` CLI resolution, project transcript keys).
+
+### From your GitHub fork (recommended)
+
+After you push this repo to GitHub:
+
 ```bash
-npm install -g cursor-local-remote
+npm install -g github:doug-fsg/mobile-ia
+```
+
+Or with the full URL:
+
+```bash
+npm install -g https://github.com/doug-fsg/mobile-ia.git
 ```
 
 Then start it:
@@ -31,15 +43,39 @@ clr
 
 A QR code pops up in your terminal — scan it from your phone and you're connected.
 
+> Repo: [doug-fsg/mobile-ia](https://github.com/doug-fsg/mobile-ia)  
+> First install builds Next.js once (may take a minute).
+
+### From this folder (local test, same `clr` command)
+
+```bash
+npm install
+npm run build
+npm install -g .
+clr
+```
+
+### Upstream package (original, no Windows fork fixes)
+
+```bash
+npm install -g cursor-local-remote
+```
+
 ## Updating
 
 ```bash
-clr --update
+npm install -g github:doug-fsg/mobile-ia
 ```
 
-Or the same command as install: `npm install -g cursor-local-remote`
+Or, if you installed from this folder:
 
-I'm actively using this myself on a daily basis, so bugs get noticed and fixed quickly.
+```bash
+cd path/to/cursor-local-remote
+git pull
+npm install
+npm run build
+npm install -g .
+```
 
 ## Features
 
