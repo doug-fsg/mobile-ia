@@ -21,60 +21,37 @@ The remote UI can see **all** sessions, both ones started in the IDE and ones st
 
 This is a **fork** of [jon-makinen/cursor-local-remote](https://github.com/jon-makinen/cursor-local-remote) with Windows fixes (paths with spaces, Cursor `agent` CLI resolution, project transcript keys).
 
-### From your GitHub fork (recommended)
+### Windows (recomendado) — instalar deste clone
 
-```bash
-npm install -g github:doug-fsg/mobile-ia
-```
-
-Or with the full URL:
-
-```bash
-npm install -g https://github.com/doug-fsg/mobile-ia.git
-```
-
-Then start it:
-
-```bash
-clr
-```
-
-A QR code pops up in your terminal — scan it from your phone and you're connected.
-
-> Repo: [doug-fsg/mobile-ia](https://github.com/doug-fsg/mobile-ia)  
-> First install builds Next.js once (may take a minute).
-
-#### Windows: `TAR_ENTRY_ERROR` / install quebrada
-
-No Windows o `npm` às vezes falha ao extrair pacotes grandes (`next`, `highlight.js`). Se aparecerem centenas de `npm warn tar TAR_ENTRY_ERROR ENOENT`, a instalação ficou incompleta.
-
-Corrija assim (PowerShell):
+No Windows, **não** use `npm install -g github:...` se aparecer `TAR_ENTRY_ERROR` / `EPERM`. Isso corrompe a pasta do NVM. Use o clone local:
 
 ```powershell
+# 1) Use Node do instalador oficial (22+), não o NVM 20.18
+node -v
+# Deve mostrar v22.x (ou 20.19+). Se mostrar v20.18 via NVM, troque:
+# nvm use 22
+# ou abra um terminal onde `where node` aponta para Program Files\nodejs
+
+cd "C:\cursor remoto\cursor-local-remote-1"
 npm uninstall -g cursor-local-remote
 npm cache clean --force
-Remove-Item -Recurse -Force "$env:APPDATA\nvm\*\node_modules\cursor-local-remote" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$env:APPDATA\nvm\v20.18.0\node_modules\cursor-local-remote" -ErrorAction SilentlyContinue
 
-# Opção A — mais estável no Windows (deste clone):
-cd caminho\para\mobile-ia
 npm install
 npm run build
 npm install -g . --maxsockets=1
-
-# Opção B — direto do GitHub, serializando downloads:
-npm install -g github:doug-fsg/mobile-ia --maxsockets=1
-```
-
-Use Node **20.19+** ou **22** (evite NVM só com 20.18 se puder). Confirme com `clr --version`.
-
-### From this folder (local test, same `clr` command)
-
-```bash
-npm install
-npm run build
-npm install -g .
+clr --version
 clr
 ```
+
+### From GitHub (Linux/macOS, ou Windows se o acima não for possível)
+
+```bash
+npm install -g github:doug-fsg/mobile-ia --maxsockets=1
+clr
+```
+
+> Repo: [doug-fsg/mobile-ia](https://github.com/doug-fsg/mobile-ia)
 
 ### Upstream package (original, no Windows fork fixes)
 
